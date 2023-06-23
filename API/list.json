@@ -1,3 +1,32 @@
 {
-    "Items": []
+    "Items": [
+        {
+            "ID": 1,
+            "Name": "Howdy",
+            "Desc": "Doo",
+            "Priority": true,
+            "Completed": false
+        },
+        {
+            "ID": 2,
+            "Name": "World!",
+            "Desc": "Hello",
+            "Priority": true,
+            "Completed": false
+        },
+        {
+            "ID": 3,
+            "Name": "Howdy",
+            "Desc": "Doo2",
+            "Priority": false,
+            "Completed": false
+        },
+        {
+            "ID": 4,
+            "Name": "Howdy",
+            "Desc": "Doo2",
+            "Priority": false,
+            "Completed": false
+        }
+    ]
 }
