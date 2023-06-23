@@ -9,6 +9,12 @@ import (
 	"strconv"
 )
 
+type Response struct {
+	Action string `json:"Action"`
+	Sucessful bool `json:"Sucessful"`
+	Context string `json:"Context"`
+}
+
 type healthStatus struct {
 	Status string `json:"status"`
 }
@@ -35,10 +41,11 @@ func addItem(c *gin.Context) {
 	var str = readFile("list.json")
 	json.Unmarshal([]byte(str), &collection)
 	var entry = Item{ID: len(collection.Items) + 1, Name: c.DefaultQuery("rawName", "Untitled"), Desc: c.DefaultQuery("rawDesc", "No Description"), Completed: found}
-	c.IndentedJSON(http.StatusOK, entry)
 	collection.Items = append(collection.Items, entry)
 	newStr,_ := json.MarshalIndent(collection, "", "    ")
 	writeToFile("list.json", string(newStr))
+	response := Response{Action: "Post", Sucessful: true, Context: "Posted without error"}
+	c.IndentedJSON(http.StatusOK, response)
 }
 
 func getItems(c *gin.Context) {
@@ -53,14 +60,21 @@ func removeItem(c *gin.Context) {
 	var str = readFile("list.json")
 	var collection Collection
 	json.Unmarshal([]byte(str), &collection)
-	for i := 0; i < len(collection.Items); i++ {
-		if (collection.Items[i].ID == index) {
-			collection.Items = removeArrayItem(collection.Items, i)
-			break
+	if (index > len(collection.Items) || index <= 0) {
+		response := Response{Action: "Delete", Sucessful: false, Context: "Index out of bounds"}
+		c.IndentedJSON(http.StatusOK, response) 
+	} else {
+		for i := 0; i < len(collection.Items); i++ {
+			if (collection.Items[i].ID == index) {
+				collection.Items = removeArrayItem(collection.Items, i)
+				break
+			}
 		}
+		newStr,_ := json.MarshalIndent(collection, "", "    ")
+		writeToFile("list.json", string(newStr))
+		response := Response{Action: "Delete", Sucessful: true, Context: "Deleted without error"}
+		c.IndentedJSON(http.StatusOK, response)
 	}
-	newStr,_ := json.MarshalIndent(collection, "", "    ")
-	writeToFile("list.json", string(newStr))
 }
 
 func removeArrayItem(arr []Item, index int) []Item {
