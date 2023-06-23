@@ -64,14 +64,16 @@ func removeItem(c *gin.Context) {
 }
 
 func removeArrayItem(arr []Item, index int) []Item {
-	var newArr []Item
+	newArr := make([]Item, len(arr) - 1)
 	newIndex := 0
 	for i := 0; i < len(arr); i++ {
 		if (i != index) {
 			newArr[newIndex] = arr[i]
+			newArr[newIndex].ID = newIndex + 1
 			newIndex++
 		}
 	}
+	fmt.Print(newArr)
 	return newArr
 }
 
