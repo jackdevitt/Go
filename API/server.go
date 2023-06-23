@@ -88,7 +88,7 @@ func writeToFile(fileName, data string) {
 	os.Truncate(fileName, 0)
 	file, err := os.OpenFile(fileName, os.O_WRONLY, 0600)
 	if (err != nil) {
-		fmt.Print("FATAL ERROR: CANNOT WRITE")
+		fmt.Print("FATAL ERROR: CANNOT WRITE >:(")
 	} else {
 		file.WriteString(data)
 	}
