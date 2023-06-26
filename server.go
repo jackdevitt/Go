@@ -202,5 +202,5 @@ func main() {
 	router.DELETE("/item", removeItem)
 	router.PATCH("/item", replaceItem)
 
-	router.Run("localhost:8080")
+	router.Run("0.0.0.0:8080")
 }
