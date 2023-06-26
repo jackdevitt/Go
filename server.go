@@ -8,7 +8,17 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"database/sql"
 	"github.com/gin-contrib/cors"
+	_ "github.com/lib/pq"
+)
+
+const (
+	host     = "localhost"
+	port     = 8000
+	user     = "postgres"
+	password = "password"
+	dbname   = "postgres"
 )
 
 type Response struct {
@@ -34,7 +44,7 @@ func checkHealth(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, status)
 }
 
-func addItem(c *gin.Context) {
+/*func addItem(c *gin.Context) {
 	_, foundCompletion := c.GetQuery("rawCompleted")
 	_, foundPriority := c.GetQuery("rawPriority")
 	var collection Collection
@@ -46,6 +56,39 @@ func addItem(c *gin.Context) {
 	writeToFile("list.json", string(newStr))
 	response := Response{Action: "Post", Sucessful: true, Context: "Posted without error"}
 	c.IndentedJSON(http.StatusOK, response)
+}*/
+
+func addItem(c *gin.Context) {
+	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+    "password=%s dbname=%s sslmode=disable",
+    host, port, user, password, dbname)
+	db, err := sql.Open("postgres", sqlInfo)
+	if (err != nil) {
+		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
+		c.IndentedJSON(http.StatusOK, response)
+	}
+	db.Ping()
+
+	_, foundCompletion := c.GetQuery("rawCompleted")
+	_, foundPriority := c.GetQuery("rawPriority")
+
+	length, sizeerr := db.Query("SELECT * FROM items")
+	counter := 1
+	for length.Next() {
+		counter++
+	}
+	fmt.Print(counter)
+	if (sizeerr != nil) {
+		response := Response{Action: "SQL", Sucessful: false, Context: sizeerr.Error()}
+		c.IndentedJSON(http.StatusOK, response)
+	}
+	insertCMD := `INSERT INTO items (ID, Name, Description, Priority, Completed)
+	VALUES ($1, $2, $3, $4, $5)`
+	_, cmderr := db.Exec(insertCMD, counter, c.DefaultQuery("rawName", "Untitled"), c.DefaultQuery("rawDesc", "No Description"), foundPriority, foundCompletion)
+	if (cmderr != nil) {
+		response := Response{Action: "SQL", Sucessful: false, Context: cmderr.Error()}
+		c.IndentedJSON(http.StatusOK, response)
+	}
 }
 
 func getItems(c *gin.Context) {
@@ -134,6 +177,18 @@ func replaceItem(c *gin.Context) {
 	}
 }
 
+func sqlf(c *gin.Context) {
+	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+    "password=%s dbname=%s sslmode=disable",
+    host, port, user, password, dbname)
+	db, err := sql.Open("postgres", sqlInfo)
+	if (err != nil) {
+		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
+		c.IndentedJSON(http.StatusOK, response)
+	}
+	db.Ping()
+}
+
 func removeArrayItem(arr []Item, index int) []Item {
 	newArr := make([]Item, len(arr) - 1)
 	newIndex := 0
@@ -191,7 +246,7 @@ func main() {
 	router.Use(cors.New(config))
 
 	router.GET("/health", checkHealth)
-
+	router.GET("/SQL", sqlf)
 	router.POST("/addItem", addItem)
 	router.DELETE("/removeItem", removeItem)
 	router.GET("/getItems", getItems)
