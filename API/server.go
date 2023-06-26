@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"github.com/gin-contrib/cors"
 )
 
 type Response struct {
@@ -172,7 +173,7 @@ func writeToFile(fileName, data string) {
 	os.Truncate(fileName, 0)
 	file, err := os.OpenFile(fileName, os.O_WRONLY, 0600)
 	if (err != nil) {
-		fmt.Print("FATAL ERROR: CANNOT WRITE")
+		fmt.Print("FATAL ERROR: ", err)
 	} else {
 		file.WriteString(data)
 	}
@@ -181,6 +182,14 @@ func writeToFile(fileName, data string) {
 func main() {
 
 	router := gin.Default()
+
+	config := cors.DefaultConfig()
+	config.AllowAllOrigins = true
+	config.AllowHeaders = []string{"Origin", "Content-Type"}
+	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+
+	router.Use(cors.New(config))
+
 	router.GET("/health", checkHealth)
 
 	router.POST("/addItem", addItem)
