@@ -34,7 +34,7 @@ type Item struct {
 	ID        int    `json:"id"`
 	Name      string `json:"name"`
 	Desc      string `json:"desc"`
-	TopPriority  bool   `json:"priority"`
+	TopPriority  bool   `json:"topPriority"`
 	Completed bool   `json:"completed"`
 }
 
@@ -76,17 +76,21 @@ func addItem(c *gin.Context) {
 	}
 }
 
+//Handler to recieve GET method sent on the /getItems endpoint
 func getItems(c *gin.Context) {
+	//Make initial connection with database
 	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
 	"password=%s dbname=%s sslmode=disable",
 	host, port, user, password, dbname)
 	db, err := sql.Open("postgres", sqlInfo)
 	if err != nil {
+		//Return an error if database is not active
 		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
 		c.IndentedJSON(http.StatusOK, response)
 	}
 	db.Ping()
 
+	//Grab all rows of the table associated with this program
 	rows, sizeerr := db.Query("SELECT * FROM items")
 	if (sizeerr != nil) {
 		response := Response{Action: "SQL", Sucessful: false, Context: sizeerr.Error()}
@@ -94,34 +98,44 @@ func getItems(c *gin.Context) {
 	}
 	defer rows.Close()
 
+	//Get any filters such as "Name" filters provided from Query Parameters and "ID" filters provided from path parameters
 	nameFilter, nameFilterPresent := c.GetQuery("rawName")
 	numFilter := c.Param("id")
 	intNumFilter, _ := strconv.Atoi(c.Param("id"))
+	//Check if ID parameter, if present, is greater than or equal to 0, else send an error
 	if intNumFilter < 0 {
 		response := Response{Action: "Get", Sucessful: false, Context: "ID cannot be below 0"}
 		c.IndentedJSON(http.StatusOK, response)
 	}
+	//Declare variable for use in Row Scan
 	var numFilterPresent bool = (numFilter != "")
 	var collection Collection
 	size := 0
+	//Purpose of loop is to find how many items fit filters to know what size the array to send the data should be
 	for rows.Next() {
+		//Begin each loop by assuming it is a valid entry
 		validEntry := true
 		var entry Item
+		//Read each row and translate that data to an Item struct
 		rows.Scan(&entry.ID, &entry.Name, &entry.Desc, &entry.TopPriority, &entry.Completed)
+		//name filter check
 		if (nameFilterPresent) {
 			if (entry.Name != nameFilter) {
 				validEntry = false
 			}
 		}
+		//ID filter check
 		if (numFilterPresent) {
 			if (entry.ID != intNumFilter) {
 				validEntry = false
 			}
 		}
+		//Runs when both checks are passed
 		if (validEntry) {
 			size++
 		}
 	}
+	//Get new row data, as old row data will not iterate again
 	newRows, sizeerr := db.Query("SELECT * FROM items")
 	if (sizeerr != nil) {
 		response := Response{Action: "SQL", Sucessful: false, Context: sizeerr.Error()}
@@ -129,29 +143,36 @@ func getItems(c *gin.Context) {
 	}
 	defer newRows.Close()
 
+	//Assign variables to be used in Row scan
 	index := 0
 	collection.Items = make([]Item, size)
 	for newRows.Next() {
 		var entry Item
 		var validEntry bool = true
+		//Get the data and make it into a Item struct, it is same as the last loop
 		newRows.Scan(&entry.ID, &entry.Name, &entry.Desc, &entry.TopPriority, &entry.Completed)
+		//Name filter check
 		if (nameFilterPresent) {
 			if (entry.Name != nameFilter) {
 				validEntry = false
 			}
 		}
+		//ID filter check
 		if (numFilterPresent) {
 			columnID, _ := strconv.Atoi(numFilter)
 			if (entry.ID != columnID) {
 				validEntry = false
 			}
 		}
+		//Runs if both checks are passed
 		if (validEntry) {
+			//Assigning passed entries into an array
 			collection.Items[index] = entry
 			index++
 		}
 	}
 
+	//Sending out the array as json response data
 	c.IndentedJSON(http.StatusOK, collection)
 }
 
