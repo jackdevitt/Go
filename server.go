@@ -1,15 +1,16 @@
 package main
 
 import (
-	"net/http"
-	"github.com/gin-gonic/gin"
+	"database/sql"
 	"encoding/json"
-	"os"
 	"fmt"
+	"net/http"
+	"os"
 	"strconv"
 	"strings"
-	"database/sql"
+
 	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 )
 
@@ -22,9 +23,9 @@ const (
 )
 
 type Response struct {
-	Action string `json:"Action"`
-	Sucessful bool `json:"Sucessful"`
-	Context string `json:"Context"`
+	Action    string `json:"Action"`
+	Sucessful bool   `json:"Sucessful"`
+	Context   string `json:"Context"`
 }
 
 type Collection struct {
@@ -32,15 +33,15 @@ type Collection struct {
 }
 
 type Item struct {
-	ID int `json:"ID"`
-	Name string `json:"Name"`
-	Desc string `json:"Desc"` 
-	Priority bool `json:"Priority"`
-	Completed bool `json:"Completed"`
+	ID        int    `json:"ID"`
+	Name      string `json:"Name"`
+	Desc      string `json:"Desc"`
+	Priority  bool   `json:"Priority"`
+	Completed bool   `json:"Completed"`
 }
 
 func checkHealth(c *gin.Context) {
-	var status = Response{Action: "Health", Sucessful: true, Context: "Systems OK"}
+	var status = Response{Action: "Health", Sucessful: true, Context: "Systems ARE GOOD"}
 	c.IndentedJSON(http.StatusOK, status)
 }
 
@@ -60,10 +61,10 @@ func checkHealth(c *gin.Context) {
 
 func addItem(c *gin.Context) {
 	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-    "password=%s dbname=%s sslmode=disable",
-    host, port, user, password, dbname)
+		"password=%s dbname=%s sslmode=disable",
+		host, port, user, password, dbname)
 	db, err := sql.Open("postgres", sqlInfo)
-	if (err != nil) {
+	if err != nil {
 		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
 		c.IndentedJSON(http.StatusOK, response)
 	}
@@ -78,14 +79,14 @@ func addItem(c *gin.Context) {
 		counter++
 	}
 	fmt.Print(counter)
-	if (sizeerr != nil) {
+	if sizeerr != nil {
 		response := Response{Action: "SQL", Sucessful: false, Context: sizeerr.Error()}
 		c.IndentedJSON(http.StatusOK, response)
 	}
 	insertCMD := `INSERT INTO items (ID, Name, Description, Priority, Completed)
 	VALUES ($1, $2, $3, $4, $5)`
 	_, cmderr := db.Exec(insertCMD, counter, c.DefaultQuery("rawName", "Untitled"), c.DefaultQuery("rawDesc", "No Description"), foundPriority, foundCompletion)
-	if (cmderr != nil) {
+	if cmderr != nil {
 		response := Response{Action: "SQL", Sucessful: false, Context: cmderr.Error()}
 		c.IndentedJSON(http.StatusOK, response)
 	}
@@ -96,20 +97,20 @@ func getItems(c *gin.Context) {
 	var str = readFile("list.json")
 	json.Unmarshal([]byte(str), &collection)
 	filter, status := c.GetQuery("rawFilter")
-	if (!status) {
+	if !status {
 		c.IndentedJSON(http.StatusOK, collection)
 	} else {
 		count := 0
 		for i := 0; i < len(collection.Items); i++ {
-			if (strings.EqualFold(collection.Items[i].Name, filter)) {
-				count++;
+			if strings.EqualFold(collection.Items[i].Name, filter) {
+				count++
 			}
 		}
-		if (count != 0) {
+		if count != 0 {
 			index := 0
 			newArr := make([]Item, count)
 			for i := 0; i < len(collection.Items); i++ {
-				if (strings.EqualFold(collection.Items[i].Name, filter)) {
+				if strings.EqualFold(collection.Items[i].Name, filter) {
 					newArr[index] = collection.Items[i]
 					index++
 				}
@@ -126,24 +127,24 @@ func getItems(c *gin.Context) {
 func removeItem(c *gin.Context) {
 	_, status := c.GetQuery("rawID")
 	index, _ := strconv.Atoi(c.Query("rawID"))
-	if (!status) {
+	if !status {
 		response := Response{Action: "Delete", Sucessful: false, Context: "No ID entered"}
 		c.IndentedJSON(http.StatusOK, response)
 	} else {
 		var str = readFile("list.json")
 		var collection Collection
 		json.Unmarshal([]byte(str), &collection)
-		if (index > len(collection.Items) || index <= 0) {
+		if index > len(collection.Items) || index <= 0 {
 			response := Response{Action: "Delete", Sucessful: false, Context: "Index out of bounds"}
-			c.IndentedJSON(http.StatusOK, response) 
+			c.IndentedJSON(http.StatusOK, response)
 		} else {
 			for i := 0; i < len(collection.Items); i++ {
-				if (collection.Items[i].ID == index) {
+				if collection.Items[i].ID == index {
 					collection.Items = removeArrayItem(collection.Items, i)
 					break
 				}
 			}
-			newStr,_ := json.MarshalIndent(collection, "", "    ")
+			newStr, _ := json.MarshalIndent(collection, "", "    ")
 			writeToFile("list.json", string(newStr))
 			response := Response{Action: "Delete", Sucessful: true, Context: "Deleted without error"}
 			c.IndentedJSON(http.StatusOK, response)
@@ -154,14 +155,14 @@ func removeItem(c *gin.Context) {
 func replaceItem(c *gin.Context) {
 	_, status := c.GetQuery("rawID")
 	index, _ := strconv.Atoi(c.Query("rawID"))
-	if (!status) {
-			response := Response{Action: "Patch", Sucessful: false, Context: "No ID entered"}
-			c.IndentedJSON(http.StatusOK, response)
+	if !status {
+		response := Response{Action: "Patch", Sucessful: false, Context: "No ID entered"}
+		c.IndentedJSON(http.StatusOK, response)
 	} else {
 		var collection Collection
 		var str = readFile("list.json")
 		json.Unmarshal([]byte(str), &collection)
-		if (index > len(collection.Items) || index < 0) {
+		if index > len(collection.Items) || index < 0 {
 			response := Response{Action: "Patch", Sucessful: false, Context: "Index out of bounds"}
 			c.IndentedJSON(http.StatusOK, response)
 		} else {
@@ -169,7 +170,7 @@ func replaceItem(c *gin.Context) {
 			_, foundPriority := c.GetQuery("rawPriority")
 			entry := Item{ID: len(collection.Items) + 1, Name: c.DefaultQuery("rawName", "Untitled"), Desc: c.DefaultQuery("rawDesc", "No Description"), Completed: foundCompletion, Priority: foundPriority}
 			collection.Items = replaceArrayItem(collection.Items, index, entry)
-			newStr,_ := json.MarshalIndent(collection, "", "    ")
+			newStr, _ := json.MarshalIndent(collection, "", "    ")
 			writeToFile("list.json", string(newStr))
 			response := Response{Action: "Patch", Sucessful: true, Context: "Updated without error"}
 			c.IndentedJSON(http.StatusOK, response)
@@ -179,10 +180,10 @@ func replaceItem(c *gin.Context) {
 
 func sqlf(c *gin.Context) {
 	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-    "password=%s dbname=%s sslmode=disable",
-    host, port, user, password, dbname)
+		"password=%s dbname=%s sslmode=disable",
+		host, port, user, password, dbname)
 	db, err := sql.Open("postgres", sqlInfo)
-	if (err != nil) {
+	if err != nil {
 		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
 		c.IndentedJSON(http.StatusOK, response)
 	}
@@ -190,10 +191,10 @@ func sqlf(c *gin.Context) {
 }
 
 func removeArrayItem(arr []Item, index int) []Item {
-	newArr := make([]Item, len(arr) - 1)
+	newArr := make([]Item, len(arr)-1)
 	newIndex := 0
 	for i := 0; i < len(arr); i++ {
-		if (i != index) {
+		if i != index {
 			newArr[newIndex] = arr[i]
 			newArr[newIndex].ID = newIndex + 1
 			newIndex++
@@ -205,7 +206,7 @@ func removeArrayItem(arr []Item, index int) []Item {
 func replaceArrayItem(arr []Item, index int, replacement Item) []Item {
 	newArr := make([]Item, len(arr))
 	for i := 0; i < len(arr); i++ {
-		if (i + 1 == index) {
+		if i+1 == index {
 			newArr[i] = replacement
 			newArr[i].ID = i + 1
 		} else {
@@ -217,7 +218,7 @@ func replaceArrayItem(arr []Item, index int, replacement Item) []Item {
 
 func readFile(fileName string) string {
 	file, err := os.ReadFile(fileName)
-	if (err != nil) {
+	if err != nil {
 		return fmt.Sprintf("FATAL ERROR: %d", err)
 	} else {
 		return string(file)
@@ -227,7 +228,7 @@ func readFile(fileName string) string {
 func writeToFile(fileName, data string) {
 	os.Truncate(fileName, 0)
 	file, err := os.OpenFile(fileName, os.O_WRONLY, 0600)
-	if (err != nil) {
+	if err != nil {
 		fmt.Print("FATAL ERROR: ", err)
 	} else {
 		file.WriteString(data)
