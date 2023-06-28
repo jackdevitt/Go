@@ -45,34 +45,47 @@ func checkHealth(c *gin.Context) {
 }
 
 func addItem(c *gin.Context) {
+	//Establish database connection
 	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
 	db, err := sql.Open("postgres", sqlInfo)
 	if err != nil {
+		//Send error on failed connection
 		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
 		c.IndentedJSON(http.StatusOK, response)
 	}
 	defer db.Close()
 	db.Ping()
 
+	//Get info from parameters
 	_, foundCompletion := c.GetQuery("rawCompleted")
 	_, foundPriority := c.GetQuery("rawPriority")
 
 	length, sizeerr := db.Query("SELECT * FROM items")
-	counter := 1
+	highest := 1
+	//Find ID for next entry
 	for length.Next() {
-		counter++
+		var entry Item
+		length.Scan(&entry.ID, &entry.Name, &entry.Desc, &entry.TopPriority, &entry.Completed)
+		if (entry.ID > highest) {
+			highest = entry.ID
+		}
 	}
 	if sizeerr != nil {
 		response := Response{Action: "SQL", Sucessful: false, Context: sizeerr.Error()}
 		c.IndentedJSON(http.StatusOK, response)
 	}
+	//SQL command
 	insertCMD := `INSERT INTO items (ID, Name, Description, Priority, Completed)
 	VALUES ($1, $2, $3, $4, $5)`
-	_, cmderr := db.Exec(insertCMD, counter, c.DefaultQuery("rawName", "Untitled"), c.DefaultQuery("rawDesc", "No Description"), foundPriority, foundCompletion)
+	_, cmderr := db.Exec(insertCMD, highest + 1, c.DefaultQuery("rawName", "Untitled"), c.DefaultQuery("rawDesc", "No Description"), foundPriority, foundCompletion)
 	if cmderr != nil {
 		response := Response{Action: "SQL", Sucessful: false, Context: cmderr.Error()}
+		c.IndentedJSON(http.StatusOK, response)
+	} else {
+		//Send message for successful POST method
+		response := Response{Action: "Post", Sucessful: true, Context: "Posted without error"}
 		c.IndentedJSON(http.StatusOK, response)
 	}
 }
@@ -177,31 +190,33 @@ func getItems(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, collection)
 }
 
+
+//Handler for /removeItem endpoint with DELETE method
 func removeItem(c *gin.Context) {
-	_, status := c.GetQuery("rawID")
-	index, _ := strconv.Atoi(c.Query("rawID"))
-	if !status {
-		response := Response{Action: "Delete", Sucessful: false, Context: "No ID entered"}
+	//Make initial connection with database
+	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+	"password=%s dbname=%s sslmode=disable",
+	host, port, user, password, dbname)
+	db, err := sql.Open("postgres", sqlInfo)
+	if err != nil {
+		//Return an error if database is not active
+		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
+		c.IndentedJSON(http.StatusOK, response)
+	}
+	db.Ping()
+	//Get value from Path
+	identifier := c.Param("id")
+	//SQL command
+	_, err = db.Query(
+		`DELETE FROM items
+		WHERE id = $1;`, identifier)
+	if err != nil {
+		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
 		c.IndentedJSON(http.StatusOK, response)
 	} else {
-		var str = readFile("list.json")
-		var collection Collection
-		json.Unmarshal([]byte(str), &collection)
-		if index > len(collection.Items) || index <= 0 {
-			response := Response{Action: "Delete", Sucessful: false, Context: "Index out of bounds"}
-			c.IndentedJSON(http.StatusOK, response)
-		} else {
-			for i := 0; i < len(collection.Items); i++ {
-				if collection.Items[i].ID == index {
-					collection.Items = removeArrayItem(collection.Items, i)
-					break
-				}
-			}
-			newStr, _ := json.MarshalIndent(collection, "", "    ")
-			writeToFile("list.json", string(newStr))
-			response := Response{Action: "Delete", Sucessful: true, Context: "Deleted without error"}
-			c.IndentedJSON(http.StatusOK, response)
-		}
+		//Send message for successful POST method
+		response := Response{Action: "Delete", Sucessful: true, Context: "Removed without error"}
+		c.IndentedJSON(http.StatusOK, response)
 	}
 }
 
@@ -346,7 +361,7 @@ func main() {
 	router.GET("/health", checkHealth)
 	router.GET("/SQL", sqlf)
 	router.POST("/addItem", addItem)
-	router.DELETE("/removeItem", removeItem)
+	router.DELETE("/removeItem/:id", removeItem)
 	router.GET("/getItems/:id", getItems)
 	router.GET("/getItems", getItems)
 	router.PATCH("/updateItem/:id", patchItem)
