@@ -177,38 +177,6 @@ func getItems(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, collection)
 }
 
-/*func getItems(c *gin.Context) {
-	var collection Collection
-	var str = readFile("list.json")
-	json.Unmarshal([]byte(str), &collection)
-	filter, status := c.GetQuery("rawFilter")
-	if !status {
-		c.IndentedJSON(http.StatusOK, collection)
-	} else {
-		count := 0
-		for i := 0; i < len(collection.Items); i++ {
-			if strings.EqualFold(collection.Items[i].Name, filter) {
-				count++
-			}
-		}
-		if count != 0 {
-			index := 0
-			newArr := make([]Item, count)
-			for i := 0; i < len(collection.Items); i++ {
-				if strings.EqualFold(collection.Items[i].Name, filter) {
-					newArr[index] = collection.Items[i]
-					index++
-				}
-			}
-			collection.Items = newArr
-			c.IndentedJSON(http.StatusOK, collection.Items)
-		} else {
-			response := Response{Action: "Get", Sucessful: false, Context: "No queries match filter"}
-			c.IndentedJSON(http.StatusOK, response)
-		}
-	}
-}*/
-
 func removeItem(c *gin.Context) {
 	_, status := c.GetQuery("rawID")
 	index, _ := strconv.Atoi(c.Query("rawID"))
@@ -236,34 +204,6 @@ func removeItem(c *gin.Context) {
 		}
 	}
 }
-
-/*
-func replaceItem(c *gin.Context) {
-	_, status := c.GetQuery("rawID")
-	index, _ := strconv.Atoi(c.Query("rawID"))
-	if !status {
-		response := Response{Action: "Patch", Sucessful: false, Context: "No ID entered"}
-		c.IndentedJSON(http.StatusOK, response)
-	} else {
-		var collection Collection
-		var str = readFile("list.json")
-		json.Unmarshal([]byte(str), &collection)
-		if index > len(collection.Items) || index < 0 {
-			response := Response{Action: "Patch", Sucessful: false, Context: "Index out of bounds"}
-			c.IndentedJSON(http.StatusOK, response)
-		} else {
-			_, foundCompletion := c.GetQuery("rawCompleted")
-			_, foundPriority := c.GetQuery("rawPriority")
-			entry := Item{ID: len(collection.Items) + 1, Name: c.DefaultQuery("rawName", "Untitled"), Desc: c.DefaultQuery("rawDesc", "No Description"), Completed: foundCompletion, TopPriority: foundPriority}
-			collection.Items = replaceArrayItem(collection.Items, index, entry)
-			newStr, _ := json.MarshalIndent(collection, "", "    ")
-			writeToFile("list.json", string(newStr))
-			response := Response{Action: "Patch", Sucessful: true, Context: "Updated without error"}
-			c.IndentedJSON(http.StatusOK, response)
-		}
-	}
-}
-*/
 
 //Handler for PATCH requests to /patchItem endpoint
 func patchItem(c *gin.Context) {
