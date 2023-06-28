@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+	"math/rand"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
@@ -72,24 +74,14 @@ func addItem(c *gin.Context) {
 	_, foundCompletion := c.GetQuery("rawCompleted")
 	_, foundPriority := c.GetQuery("rawPriority")
 
-	length, sizeerr := db.Query("SELECT * FROM items")
-	highest := 1
-	//Find ID for next entry
-	for length.Next() {
-		var entry Item
-		length.Scan(&entry.ID, &entry.Name, &entry.Desc, &entry.TopPriority, &entry.Completed)
-		if (entry.ID > highest) {
-			highest = entry.ID
-		}
-	}
-	if sizeerr != nil {
-		response := Response{Action: "SQL", Sucessful: false, Context: sizeerr.Error()}
-		c.IndentedJSON(http.StatusOK, response)
-	}
+	rand.Seed(time.Now().UnixNano())
+	min := 1000000000
+	max := 2147483647
+	assignedID := rand.Intn(max - min + 1) + min
 	//SQL command
 	insertCMD := `INSERT INTO items (ID, Name, Description, Priority, Completed)
 	VALUES ($1, $2, $3, $4, $5)`
-	_, cmderr := db.Exec(insertCMD, highest + 1, c.DefaultQuery("rawName", "Untitled"), c.DefaultQuery("rawDesc", "No Description"), foundPriority, foundCompletion)
+	_, cmderr := db.Exec(insertCMD, assignedID, c.DefaultQuery("rawName", "Untitled"), c.DefaultQuery("rawDesc", "No Description"), foundPriority, foundCompletion)
 	if cmderr != nil {
 		response := Response{Action: "SQL", Sucessful: false, Context: cmderr.Error()}
 		c.IndentedJSON(http.StatusOK, response)
