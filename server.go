@@ -2,10 +2,8 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"github.com/gin-contrib/cors"
@@ -39,23 +37,35 @@ type Item struct {
 	Completed bool   `json:"completed"`
 }
 
-func checkHealth(c *gin.Context) {
-	var status = Response{Action: "Health", Sucessful: true, Context: "Systems ARE GOOD"}
-	c.IndentedJSON(http.StatusOK, status)
-}
-
-func addItem(c *gin.Context) {
+func connectDB() *sql.DB {
 	//Establish database connection
 	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
-	db, err := sql.Open("postgres", sqlInfo)
-	if err != nil {
-		//Send error on failed connection
-		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
-		c.IndentedJSON(http.StatusOK, response)
+	db, _ := sql.Open("postgres", sqlInfo)
+	return db
+}
+
+func checkHealth(c *gin.Context) {
+	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+	"password=%s dbname=%s sslmode=disable",
+	host, port, user, password, dbname)
+	db, _ := sql.Open("postgres", sqlInfo)
+	db.Ping()
+	_, err := db.Query(`
+		SELECT * FROM items
+		WHERE id = -1`)
+	if (err == nil) {
+		status := Response{Action: "Health", Sucessful: true, Context: "Systems are OK"}
+		c.IndentedJSON(http.StatusOK, status)
+	} else {
+		status := Response{Action: "Health", Sucessful: false, Context: "Systems are DOWN"}
+		c.IndentedJSON(http.StatusOK, status)
 	}
-	defer db.Close()
+}
+
+func addItem(c *gin.Context) {
+	db := connectDB()
 	db.Ping()
 
 	//Get info from parameters
@@ -92,16 +102,7 @@ func addItem(c *gin.Context) {
 
 //Handler to recieve GET method sent on the /getItems endpoint
 func getItems(c *gin.Context) {
-	//Make initial connection with database
-	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-	"password=%s dbname=%s sslmode=disable",
-	host, port, user, password, dbname)
-	db, err := sql.Open("postgres", sqlInfo)
-	if err != nil {
-		//Return an error if database is not active
-		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
-		c.IndentedJSON(http.StatusOK, response)
-	}
+	db := connectDB()
 	db.Ping()
 
 	//Grab all rows of the table associated with this program
@@ -193,21 +194,12 @@ func getItems(c *gin.Context) {
 
 //Handler for /removeItem endpoint with DELETE method
 func removeItem(c *gin.Context) {
-	//Make initial connection with database
-	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-	"password=%s dbname=%s sslmode=disable",
-	host, port, user, password, dbname)
-	db, err := sql.Open("postgres", sqlInfo)
-	if err != nil {
-		//Return an error if database is not active
-		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
-		c.IndentedJSON(http.StatusOK, response)
-	}
+	db := connectDB()
 	db.Ping()
 	//Get value from Path
 	identifier := c.Param("id")
 	//SQL command
-	_, err = db.Query(
+	_, err := db.Query(
 		`DELETE FROM items
 		WHERE id = $1;`, identifier)
 	if err != nil {
@@ -222,16 +214,7 @@ func removeItem(c *gin.Context) {
 
 //Handler for PATCH requests to /patchItem endpoint
 func patchItem(c *gin.Context) {
-	//Make database connection
-	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-	"password=%s dbname=%s sslmode=disable",
-	host, port, user, password, dbname)
-	db, err := sql.Open("postgres", sqlInfo)
-	if err != nil {
-		//Send error on bad call
-		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
-		c.IndentedJSON(http.StatusOK, response)
-	}
+	db := connectDB()
 	db.Ping()
 
 	//Get data from database
@@ -290,63 +273,6 @@ func patchItem(c *gin.Context) {
 	}
 }
 
-func sqlf(c *gin.Context) {
-	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-		"password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
-	db, err := sql.Open("postgres", sqlInfo)
-	if err != nil {
-		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
-		c.IndentedJSON(http.StatusOK, response)
-	}
-	db.Ping()
-}
-
-func removeArrayItem(arr []Item, index int) []Item {
-	newArr := make([]Item, len(arr)-1)
-	newIndex := 0
-	for i := 0; i < len(arr); i++ {
-		if i != index {
-			newArr[newIndex] = arr[i]
-			newArr[newIndex].ID = newIndex + 1
-			newIndex++
-		}
-	}
-	return newArr
-}
-
-func replaceArrayItem(arr []Item, index int, replacement Item) []Item {
-	newArr := make([]Item, len(arr))
-	for i := 0; i < len(arr); i++ {
-		if i+1 == index {
-			newArr[i] = replacement
-			newArr[i].ID = i + 1
-		} else {
-			newArr[i] = arr[i]
-		}
-	}
-	return newArr
-}
-
-func readFile(fileName string) string {
-	file, err := os.ReadFile(fileName)
-	if err != nil {
-		return fmt.Sprintf("FATAL ERROR: %d", err)
-	} else {
-		return string(file)
-	}
-}
-
-func writeToFile(fileName, data string) {
-	os.Truncate(fileName, 0)
-	file, err := os.OpenFile(fileName, os.O_WRONLY, 0600)
-	if err != nil {
-		fmt.Print("FATAL ERROR: ", err)
-	} else {
-		file.WriteString(data)
-	}
-}
-
 func main() {
 
 	router := gin.Default()
@@ -359,7 +285,6 @@ func main() {
 	router.Use(cors.New(config))
 
 	router.GET("/health", checkHealth)
-	router.GET("/SQL", sqlf)
 	router.POST("/addItem", addItem)
 	router.DELETE("/removeItem/:id", removeItem)
 	router.GET("/getItems/:id", getItems)
