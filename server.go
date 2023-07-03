@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"strings"
 	"encoding/json"
 	"math/rand"
 	"github.com/gin-contrib/cors"
@@ -134,7 +135,7 @@ func getItems(c *gin.Context) {
 		rows.Scan(&entry.ID, &entry.Name, &entry.Desc, &entry.TopPriority, &entry.Completed)
 		//name filter check
 		if (nameFilterPresent) {
-			if (entry.Name != nameFilter) {
+			if (!strings.Contains(strings.ToLower(entry.Name), strings.ToLower(nameFilter))) {
 				validEntry = false
 			}
 		}
@@ -167,7 +168,7 @@ func getItems(c *gin.Context) {
 		newRows.Scan(&entry.ID, &entry.Name, &entry.Desc, &entry.TopPriority, &entry.Completed)
 		//Name filter check
 		if (nameFilterPresent) {
-			if (entry.Name != nameFilter) {
+			if (!strings.Contains(strings.ToLower(entry.Name), strings.ToLower(nameFilter))) {
 				validEntry = false
 			}
 		}
