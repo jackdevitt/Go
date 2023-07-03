@@ -5,17 +5,19 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
+	"encoding/json"
 	"math/rand"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 )
 
+var db = connectDB();
+
 const (
-	host     = "172.17.0.3"
-	port     = 5432
+	host     = "localhost"
+	port     = 8000
 	user     = "postgres"
 	password = "password"
 	dbname   = "postgres"
@@ -67,36 +69,41 @@ func checkHealth(c *gin.Context) {
 }
 
 func addItem(c *gin.Context) {
-	db := connectDB()
 	db.Ping()
-
-	//Get info from parameters
-	_, foundCompletion := c.GetQuery("rawCompleted")
-	_, foundPriority := c.GetQuery("rawPriority")
-
-	rand.Seed(time.Now().UnixNano())
-	min := 1000000000
-	max := 2147483647
-	assignedID := rand.Intn(max - min + 1) + min
-	//SQL command
-	insertCMD := `INSERT INTO items (ID, Name, Description, Priority, Completed)
-	VALUES ($1, $2, $3, $4, $5)`
-	_, cmderr := db.Exec(insertCMD, assignedID, c.DefaultQuery("rawName", "Untitled"), c.DefaultQuery("rawDesc", "No Description"), foundPriority, foundCompletion)
-	if cmderr != nil {
-		response := Response{Action: "SQL", Sucessful: false, Context: cmderr.Error()}
-		c.IndentedJSON(http.StatusOK, response)
+	body, err := c.GetRawData()
+	if err != nil {
+		response := Response{Action: "Post", Sucessful: false, Context: err.Error()}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	}
+	var data Item
+	json.Unmarshal(body, &data)
+	fmt.Println(data.Name)
+	if data.Name == "" {
+		response := Response{Action: "Post", Sucessful: false, Context: "No 'name' key found"}
+		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
-		//Send message for successful POST method
-		response := Response{Action: "Post", Sucessful: true, Context: "Posted without error"}
-		c.IndentedJSON(http.StatusOK, response)
+		rand.Seed(time.Now().UnixNano())
+		min := 1000000000
+		max := 2147483647
+		assignedID := rand.Intn(max - min + 1) + min
+		//SQL command
+		insertCMD := `INSERT INTO items (ID, Name, Description, Priority, Completed)
+		VALUES ($1, $2, $3, $4, $5)`
+		_, cmderr := db.Exec(insertCMD, assignedID, data.Name, data.Desc, data.TopPriority, data.Completed)
+		if cmderr != nil {
+			response := Response{Action: "SQL", Sucessful: false, Context: cmderr.Error()}
+			c.IndentedJSON(http.StatusBadRequest, response)
+		} else {
+			//Send message for successful POST method
+			response := Response{Action: "Post", Sucessful: true, Context: "Posted without error"}
+			c.IndentedJSON(http.StatusOK, response)
+		}
 	}
 }
 
 //Handler to recieve GET method sent on the /getItems endpoint
 func getItems(c *gin.Context) {
-	db := connectDB()
 	db.Ping()
-
 	//Grab all rows of the table associated with this program
 	rows, sizeerr := db.Query("SELECT * FROM items")
 	if (sizeerr != nil) {
@@ -186,7 +193,6 @@ func getItems(c *gin.Context) {
 
 //Handler for /removeItem endpoint with DELETE method
 func removeItem(c *gin.Context) {
-	db := connectDB()
 	db.Ping()
 	//Get value from Path
 	identifier := c.Param("id")
@@ -206,7 +212,6 @@ func removeItem(c *gin.Context) {
 
 //Handler for PATCH requests to /patchItem endpoint
 func patchItem(c *gin.Context) {
-	db := connectDB()
 	db.Ping()
 
 	//Get data from database
@@ -220,38 +225,21 @@ func patchItem(c *gin.Context) {
 	//Search for correct ID
 	found := false
 	target, _ := strconv.Atoi(c.Param("id"))
+
+	body,_ := c.GetRawData()
+	var input Item
+	json.Unmarshal(body, &input) 
 	for rows.Next() {
 		var entry Item
 		//Make a new entry with data from the database
 		rows.Scan(&entry.ID, &entry.Name, &entry.Desc, &entry.TopPriority, &entry.Completed)
 		if (entry.ID == target) {
-			found = true
-			//Update Name value if present
-			nameVal, nameFound := c.GetQuery("rawName")
-			if (nameFound) {
-				entry.Name = nameVal
-			}
-			//Update description value if present
-			descVal, descFound := c.GetQuery("rawDesc")
-			if (descFound) {
-				entry.Desc = descVal
-			}
-			//Update priority value if present
-			priorityVal, priorityFound := c.GetQuery("rawPriority")
-			if (priorityFound) {
-				entry.TopPriority = strings.EqualFold(priorityVal, "true")
-			}
-			//Update completed value if present
-			completedVal, completedFound := c.GetQuery("rawCompleted") 
-			if (completedFound) {
-				entry.Completed = strings.EqualFold(completedVal, "true")
-			}
-
 			//Push to database
+			found = true
 			db.Query(`
 			UPDATE items
 			SET name = $1, description = $2, priority = $3, completed = $4
-			WHERE id = $5;`, entry.Name, entry.Desc, entry.TopPriority, entry.Completed, entry.ID)
+			WHERE id = $5;`, input.Name, input.Desc, input.TopPriority, input.Completed, entry.ID)
 		}
 	}
 	//Runs if could not find given ID
