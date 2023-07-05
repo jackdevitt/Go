@@ -48,17 +48,11 @@ func connectDB() *gorm.DB {
 	fmt.Print(db);
 	return db
 }
-/*
+
 func checkHealth(c *gin.Context) {
-	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-	"password=%s dbname=%s sslmode=disable",
-	host, port, user, password, dbname)
-	db, _ := sql.Open("postgres", sqlInfo)
-	db.Ping()
-	_, err := db.Query(`
-		SELECT * FROM items
-		WHERE id = -1`)
-	if (err == nil) {
+	var blank Item
+	result := db.First(&blank)
+	if (result.Error == nil) {
 		status := Response{Action: "Health", Sucessful: true, Context: "Systems are OK"}
 		c.IndentedJSON(http.StatusOK, status)
 	} else {
@@ -66,7 +60,7 @@ func checkHealth(c *gin.Context) {
 		c.IndentedJSON(http.StatusOK, status)
 	}
 }
-*/
+
 func addItem(c *gin.Context) {
 	body, err := c.GetRawData()
 	if err != nil {
@@ -102,55 +96,56 @@ func getItems(c *gin.Context) {
 	if result.Error != nil {
 		response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
 		c.IndentedJSON(http.StatusBadRequest, response)
+	} else {
+		nameFilter, nameFilterPresent := c.GetQuery("rawName")
+		numFilter := c.Param("id")
+		numFilterPresent := (numFilter != "")
+		collection := Collection{Items: items}
+		count := 0;
+		idFilter,_ := strconv.Atoi(numFilter)
+		if (numFilterPresent && (idFilter < 1000000000 || idFilter > 2147483647)) {
+			response := Response{Action: "Post", Sucessful: false, Context: "ID given either too high or too low"}
+			c.IndentedJSON(http.StatusBadRequest, response)
+		} 
+		for i := 0; i < len(collection.Items); i++ {
+			validEntry := true;
+			if (nameFilterPresent) {
+				if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
+					validEntry = false;
+				}
+			}
+			if (numFilterPresent) {
+				if (collection.Items[i].ID != idFilter) {
+					validEntry = false;
+				}
+			}
+			if (validEntry) {
+				count++;
+			}
+		}
+		newCollection := make([]Item, count)
+		index := 0
+		for i := 0; i < len(collection.Items); i++ {
+			validEntry := true;
+			if (nameFilterPresent) {
+				if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
+					validEntry = false;
+				}
+			}
+			if (numFilterPresent) {
+				idFilter, _ := strconv.Atoi(numFilter);
+				if (collection.Items[i].ID != idFilter) {
+					validEntry = false;
+				}
+			}
+			if (validEntry) {
+				newCollection[index] = collection.Items[i];
+				index++;
+			}
+		}
+		collection.Items = newCollection
+		c.IndentedJSON(http.StatusOK, collection)
 	}
-	nameFilter, nameFilterPresent := c.GetQuery("rawName")
-	numFilter := c.Param("id")
-	numFilterPresent := (numFilter != "")
-	collection := Collection{Items: items}
-	count := 0;
-	idFilter,_ := strconv.Atoi(numFilter)
-	if (numFilterPresent && (idFilter < 1000000000 || idFilter > 2147483647)) {
-		response := Response{Action: "Post", Sucessful: false, Context: "ID given either too high or too low"}
-		c.IndentedJSON(http.StatusBadRequest, response)
-	} 
-	for i := 0; i < len(collection.Items); i++ {
-		validEntry := true;
-		if (nameFilterPresent) {
-			if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
-				validEntry = false;
-			}
-		}
-		if (numFilterPresent) {
-			if (collection.Items[i].ID != idFilter) {
-				validEntry = false;
-			}
-		}
-		if (validEntry) {
-			count++;
-		}
-	}
-	newCollection := make([]Item, count)
-	index := 0
-	for i := 0; i < len(collection.Items); i++ {
-		validEntry := true;
-		if (nameFilterPresent) {
-			if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
-				validEntry = false;
-			}
-		}
-		if (numFilterPresent) {
-			idFilter, _ := strconv.Atoi(numFilter);
-			if (collection.Items[i].ID != idFilter) {
-				validEntry = false;
-			}
-		}
-		if (validEntry) {
-			newCollection[index] = collection.Items[i];
-			index++;
-		}
-	}
-	collection.Items = newCollection
-	c.IndentedJSON(http.StatusOK, collection)
 }
 
 
@@ -215,7 +210,7 @@ func main() {
 
 	router.Use(cors.New(config))
 
-	//router.GET("/health", checkHealth)
+	router.GET("/health", checkHealth)
 	router.POST("/addItem", addItem)
 	router.DELETE("/removeItem/:id", removeItem)
 	router.GET("/getItems/:id", getItems)
