@@ -1,8 +1,7 @@
 package main
 
 import (
-	
-	//"database/sql"
+
 	"fmt"
 	"net/http"
 	"strconv"
@@ -89,6 +88,9 @@ func addItem(c *gin.Context) {
 		if result.Error != nil {
 			response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
 			c.IndentedJSON(http.StatusBadRequest, response)
+		} else {
+			response := Response{Action: "Patch", Sucessful: true, Context: "Updated without error"}
+			c.IndentedJSON(http.StatusOK, response)
 		}
 	}
 }
@@ -106,6 +108,11 @@ func getItems(c *gin.Context) {
 	numFilterPresent := (numFilter != "")
 	collection := Collection{Items: items}
 	count := 0;
+	idFilter,_ := strconv.Atoi(numFilter)
+	if (numFilterPresent && (idFilter < 1000000000 || idFilter > 2147483647)) {
+		response := Response{Action: "Post", Sucessful: false, Context: "ID given either too high or too low"}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	} 
 	for i := 0; i < len(collection.Items); i++ {
 		validEntry := true;
 		if (nameFilterPresent) {
@@ -114,7 +121,6 @@ func getItems(c *gin.Context) {
 			}
 		}
 		if (numFilterPresent) {
-			idFilter, _ := strconv.Atoi(numFilter);
 			if (collection.Items[i].ID != idFilter) {
 				validEntry = false;
 			}
@@ -146,70 +152,57 @@ func getItems(c *gin.Context) {
 	collection.Items = newCollection
 	c.IndentedJSON(http.StatusOK, collection)
 }
-/*
+
 
 //Handler for /removeItem endpoint with DELETE method
 func removeItem(c *gin.Context) {
-	db.Ping()
-	//Get value from Path
-	identifier := c.Param("id")
-	//SQL command
-	_, err := db.Query(
-		`DELETE FROM items
-		WHERE id = $1;`, identifier)
-	if err != nil {
-		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
-		c.IndentedJSON(http.StatusOK, response)
+	id := c.Param("id")
+	if (id == "") {
+		response := Response{Action: "Delete", Sucessful: false, Context: "Please enter an ID"}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	}
+	numId,_ := strconv.Atoi(id) 
+	if (numId < 1000000000 || numId > 2147483647) {
+		response := Response{Action: "Delete", Sucessful: false, Context: "ID given either too high or too low"}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	}
+	var entry Item
+	result := db.First(&entry, numId)
+	if result.Error != nil {
+		response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
-		//Send message for successful POST method
-		response := Response{Action: "Delete", Sucessful: true, Context: "Removed without error"}
+		db.Delete(&entry)
+		response := Response{Action: "Delete", Sucessful: true, Context: "Deleted without error"}
 		c.IndentedJSON(http.StatusOK, response)
 	}
 }
+
 
 //Handler for PATCH requests to /patchItem endpoint
 func patchItem(c *gin.Context) {
-	db.Ping()
-
-	//Get data from database
-	rows, pullErr := db.Query("SELECT * from items")
-	if pullErr != nil {
-		response := Response{Action: "SQL", Sucessful: false, Context: pullErr.Error()}
-		c.IndentedJSON(http.StatusOK, response)
-	}
-	defer rows.Close()
-
-	//Search for correct ID
-	found := false
-	target, _ := strconv.Atoi(c.Param("id"))
-
 	body,_ := c.GetRawData()
-	var input Item
-	json.Unmarshal(body, &input) 
-	for rows.Next() {
-		var entry Item
-		//Make a new entry with data from the database
-		rows.Scan(&entry.ID, &entry.Name, &entry.Desc, &entry.TopPriority, &entry.Completed)
-		if (entry.ID == target) {
-			//Push to database
-			found = true
-			db.Query(`
-			UPDATE items
-			SET name = $1, description = $2, priority = $3, completed = $4
-			WHERE id = $5;`, input.Name, input.Desc, input.TopPriority, input.Completed, entry.ID)
-		}
-	}
-	//Runs if could not find given ID
-	if (!found) {
-		response := Response{Action: "Patch", Sucessful: false, Context: "No entry found matching given ID"}
-		c.IndentedJSON(http.StatusOK, response)
+	var entry Item
+	json.Unmarshal(body, &entry)
+
+	id := c.Param("id")
+
+	var tableEntry Item
+	result := db.First(&tableEntry, id)
+	if result.Error != nil {
+		response := Response{Action: "SQL", Sucessful: false, Context: "No entry matching given ID"}
+		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
-		//Runs on success
-		response := Response{Action: "Patch", Sucessful: true, Context: "Updated entry without error"}
-		c.IndentedJSON(http.StatusOK, response)	
+		tableEntry.Name = entry.Name;
+		tableEntry.Description = entry.Description;
+		tableEntry.TopPriority = entry.TopPriority;
+		tableEntry.Completed = entry.Completed;
+
+		db.Save(&tableEntry)
 	}
+
 }
-*/
+
 func main() {
 
 	db = connectDB()
@@ -224,11 +217,10 @@ func main() {
 
 	//router.GET("/health", checkHealth)
 	router.POST("/addItem", addItem)
-	//router.DELETE("/removeItem/:id", removeItem)
+	router.DELETE("/removeItem/:id", removeItem)
 	router.GET("/getItems/:id", getItems)
 	router.GET("/getItems", getItems)
-	/*
-	router.PATCH("/updateItem/:id", patchItem)*/
+	router.PATCH("/updateItem/:id", patchItem)
 
 	router.Run("0.0.0.0:8080")
 }
