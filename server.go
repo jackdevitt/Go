@@ -1,28 +1,25 @@
 package main
 
 import (
-	"database/sql"
+	
+	//"database/sql"
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
+	
+	//"time"
 	"strings"
-	"encoding/json"
-	"math/rand"
+	//"encoding/json"
+	//"math/rand"
+	"gorm.io/gorm"
+	"gorm.io/driver/postgres"
+	
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 )
 
-var db = connectDB();
-
-const (
-	host     = "localhost"
-	port     = 8000
-	user     = "postgres"
-	password = "password"
-	dbname   = "postgres"
-)
+var db *gorm.DB;
 
 type Response struct {
 	Action    string `json:"action"`
@@ -37,20 +34,22 @@ type Collection struct {
 type Item struct {
 	ID        int    `json:"id"`
 	Name      string `json:"name"`
-	Desc      string `json:"desc"`
+	Description      string `json:"desc"`
 	TopPriority  bool   `json:"topPriority"`
 	Completed bool   `json:"completed"`
 }
 
-func connectDB() *sql.DB {
-	//Establish database connection
-	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-		"password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
-	db, _ := sql.Open("postgres", sqlInfo)
+func connectDB() *gorm.DB {
+	dsn := "host=localhost user=postgres password=password dbname=postgres port=8000 sslmode=disable TimeZone=America/New_York"
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{});
+	if err != nil {
+		fmt.Print(err.Error());
+	}
+	db.AutoMigrate(&Item{});
+	fmt.Print(db);
 	return db
 }
-
+/*
 func checkHealth(c *gin.Context) {
 	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
 	"password=%s dbname=%s sslmode=disable",
@@ -101,96 +100,61 @@ func addItem(c *gin.Context) {
 		}
 	}
 }
-
+*/
 //Handler to recieve GET method sent on the /getItems endpoint
 func getItems(c *gin.Context) {
-	db.Ping()
-	//Grab all rows of the table associated with this program
-	rows, sizeerr := db.Query("SELECT * FROM items")
-	if (sizeerr != nil) {
-		response := Response{Action: "SQL", Sucessful: false, Context: sizeerr.Error()}
-		c.IndentedJSON(http.StatusOK, response)	
+	var items []Item
+	result := db.Find(&items)
+	if result.Error != nil {
+		response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+		c.IndentedJSON(http.StatusBadRequest, response)
 	}
-	defer rows.Close()
-
-	//Get any filters such as "Name" filters provided from Query Parameters and "ID" filters provided from path parameters
 	nameFilter, nameFilterPresent := c.GetQuery("rawName")
 	numFilter := c.Param("id")
-	intNumFilter, _ := strconv.Atoi(c.Param("id"))
-	//Check if ID parameter, if present, is greater than or equal to 0, else send an error
-	if intNumFilter < 0 {
-		response := Response{Action: "Get", Sucessful: false, Context: "ID cannot be below 0"}
-		c.IndentedJSON(http.StatusOK, response)
-	}
-	//Declare variable for use in Row Scan
-	var numFilterPresent bool = (numFilter != "")
-	var collection Collection
-	size := 0
-	//Purpose of loop is to find how many items fit filters to know what size the array to send the data should be
-	for rows.Next() {
-		//Begin each loop by assuming it is a valid entry
-		validEntry := true
-		var entry Item
-		//Read each row and translate that data to an Item struct
-		rows.Scan(&entry.ID, &entry.Name, &entry.Desc, &entry.TopPriority, &entry.Completed)
-		//name filter check
+	numFilterPresent := (numFilter != "")
+	collection := Collection{Items: items}
+	count := 0;
+	for i := 0; i < len(collection.Items); i++ {
+		validEntry := true;
 		if (nameFilterPresent) {
-			if (!strings.Contains(strings.ToLower(entry.Name), strings.ToLower(nameFilter))) {
-				validEntry = false
+			if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
+				validEntry = false;
 			}
 		}
-		//ID filter check
 		if (numFilterPresent) {
-			if (entry.ID != intNumFilter) {
-				validEntry = false
+			idFilter, _ := strconv.Atoi(numFilter);
+			if (collection.Items[i].ID != idFilter) {
+				validEntry = false;
 			}
 		}
-		//Runs when both checks are passed
 		if (validEntry) {
-			size++
+			count++;
 		}
 	}
-	//Get new row data, as old row data will not iterate again
-	newRows, sizeerr := db.Query("SELECT * FROM items")
-	if (sizeerr != nil) {
-		response := Response{Action: "SQL", Sucessful: false, Context: sizeerr.Error()}
-		c.IndentedJSON(http.StatusOK, response)	
-	}
-	defer newRows.Close()
-
-	//Assign variables to be used in Row scan
+	newCollection := make([]Item, count)
 	index := 0
-	collection.Items = make([]Item, size)
-	for newRows.Next() {
-		var entry Item
-		var validEntry bool = true
-		//Get the data and make it into a Item struct, it is same as the last loop
-		newRows.Scan(&entry.ID, &entry.Name, &entry.Desc, &entry.TopPriority, &entry.Completed)
-		//Name filter check
+	for i := 0; i < len(collection.Items); i++ {
+		validEntry := true;
 		if (nameFilterPresent) {
-			if (!strings.Contains(strings.ToLower(entry.Name), strings.ToLower(nameFilter))) {
-				validEntry = false
+			if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
+				validEntry = false;
 			}
 		}
-		//ID filter check
 		if (numFilterPresent) {
-			columnID, _ := strconv.Atoi(numFilter)
-			if (entry.ID != columnID) {
-				validEntry = false
+			idFilter, _ := strconv.Atoi(numFilter);
+			if (collection.Items[i].ID != idFilter) {
+				validEntry = false;
 			}
 		}
-		//Runs if both checks are passed
 		if (validEntry) {
-			//Assigning passed entries into an array
-			collection.Items[index] = entry
-			index++
+			newCollection[index] = collection.Items[i];
+			index++;
 		}
 	}
-
-	//Sending out the array as json response data
+	collection.Items = newCollection
 	c.IndentedJSON(http.StatusOK, collection)
 }
-
+/*
 
 //Handler for /removeItem endpoint with DELETE method
 func removeItem(c *gin.Context) {
@@ -253,9 +217,10 @@ func patchItem(c *gin.Context) {
 		c.IndentedJSON(http.StatusOK, response)	
 	}
 }
-
+*/
 func main() {
 
+	db = connectDB()
 	router := gin.Default()
 
 	config := cors.DefaultConfig()
@@ -265,12 +230,14 @@ func main() {
 
 	router.Use(cors.New(config))
 
-	router.GET("/health", checkHealth)
+	/*router.GET("/health", checkHealth)
 	router.POST("/addItem", addItem)
 	router.DELETE("/removeItem/:id", removeItem)
+	*/
 	router.GET("/getItems/:id", getItems)
 	router.GET("/getItems", getItems)
-	router.PATCH("/updateItem/:id", patchItem)
+	/*
+	router.PATCH("/updateItem/:id", patchItem)*/
 
 	router.Run("0.0.0.0:8080")
 }
