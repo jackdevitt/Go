@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strconv"
 	
-	//"time"
+	"time"
 	"strings"
-	//"encoding/json"
-	//"math/rand"
+	"encoding/json"
+	"math/rand"
 	"gorm.io/gorm"
 	"gorm.io/driver/postgres"
 	
@@ -67,40 +67,25 @@ func checkHealth(c *gin.Context) {
 		c.IndentedJSON(http.StatusOK, status)
 	}
 }
-
+*/
 func addItem(c *gin.Context) {
-	db.Ping()
 	body, err := c.GetRawData()
 	if err != nil {
 		response := Response{Action: "Post", Sucessful: false, Context: err.Error()}
 		c.IndentedJSON(http.StatusBadRequest, response)
 	}
-	var data Item
-	json.Unmarshal(body, &data)
-	fmt.Println(data.Name)
-	if data.Name == "" {
-		response := Response{Action: "Post", Sucessful: false, Context: "No 'name' key found"}
+	var entry Item
+	json.Unmarshal(body, &entry)
+	rand.Seed(time.Now().UnixNano())
+	entry.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
+
+	result := db.Create(&entry)
+	if result.Error != nil {
+		response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
 		c.IndentedJSON(http.StatusBadRequest, response)
-	} else {
-		rand.Seed(time.Now().UnixNano())
-		min := 1000000000
-		max := 2147483647
-		assignedID := rand.Intn(max - min + 1) + min
-		//SQL command
-		insertCMD := `INSERT INTO items (ID, Name, Description, Priority, Completed)
-		VALUES ($1, $2, $3, $4, $5)`
-		_, cmderr := db.Exec(insertCMD, assignedID, data.Name, data.Desc, data.TopPriority, data.Completed)
-		if cmderr != nil {
-			response := Response{Action: "SQL", Sucessful: false, Context: cmderr.Error()}
-			c.IndentedJSON(http.StatusBadRequest, response)
-		} else {
-			//Send message for successful POST method
-			response := Response{Action: "Post", Sucessful: true, Context: "Posted without error"}
-			c.IndentedJSON(http.StatusOK, response)
-		}
 	}
 }
-*/
+
 //Handler to recieve GET method sent on the /getItems endpoint
 func getItems(c *gin.Context) {
 	var items []Item
@@ -230,10 +215,9 @@ func main() {
 
 	router.Use(cors.New(config))
 
-	/*router.GET("/health", checkHealth)
+	//router.GET("/health", checkHealth)
 	router.POST("/addItem", addItem)
-	router.DELETE("/removeItem/:id", removeItem)
-	*/
+	//router.DELETE("/removeItem/:id", removeItem)
 	router.GET("/getItems/:id", getItems)
 	router.GET("/getItems", getItems)
 	/*
