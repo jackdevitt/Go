@@ -76,13 +76,20 @@ func addItem(c *gin.Context) {
 	}
 	var entry Item
 	json.Unmarshal(body, &entry)
-	rand.Seed(time.Now().UnixNano())
-	entry.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
 
-	result := db.Create(&entry)
-	if result.Error != nil {
-		response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
-		c.IndentedJSON(http.StatusBadRequest, response)
+	if (len(strings.TrimSpace(entry.Name)) == 0) {
+		response := Response{Action: "Post", Sucessful: false, Context: "Please provide a Name"}
+		c.IndentedJSON(http.StatusBadRequest, response);
+	} else {
+
+		rand.Seed(time.Now().UnixNano())
+		entry.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
+
+		result := db.Create(&entry)
+		if result.Error != nil {
+			response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+			c.IndentedJSON(http.StatusBadRequest, response)
+		}
 	}
 }
 
