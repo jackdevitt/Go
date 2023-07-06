@@ -36,6 +36,13 @@ type Item struct {
 	Description      string `json:"desc"`
 	TopPriority  bool   `json:"topPriority"`
 	Completed bool   `json:"completed"`
+	UserID int `json:"userId"`
+}
+
+type User struct {
+	ID int `json:"id"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 func connectDB() *gorm.DB {
@@ -61,6 +68,53 @@ func checkHealth(c *gin.Context) {
 	}
 }
 
+func validateUser(c *gin.Context) {
+	body, err := c.GetRawData()
+	if err != nil {
+		response := Response{Action: "Validate", Sucessful: false, Context: err.Error()}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	} else {
+		var user User
+		json.Unmarshal(body, &user)
+
+		result := db.Where("username = ? AND password = ?", user.Username, user.Password).First(&user)
+		fmt.Println(user)
+		if result.Error != nil {
+			fmt.Println(result.Error.Error())
+			response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+			c.IndentedJSON(http.StatusBadRequest, response) 
+		} else {
+			c.IndentedJSON(http.StatusOK, user)	
+		}
+	}
+}
+
+func addUser(c *gin.Context) {
+	body, err := c.GetRawData()
+	if err != nil {
+		response := Response{Action: "Post", Sucessful: false, Context: err.Error()}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	}
+	var user User
+	json.Unmarshal(body, &user)
+	if strings.TrimSpace(user.Password) == "" || strings.TrimSpace(user.Username) == "" {
+		response := Response{Action: "Post", Sucessful: false, Context: "Please enter a username AND password"}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	} else {
+		rand.Seed(time.Now().UnixNano())
+		user.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
+
+		result := db.Create(&user)
+		if result.Error != nil {
+			response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+			c.IndentedJSON(http.StatusBadRequest, response)
+		} else {
+			response := Response{Action: "Post", Sucessful: true, Context: "Posted without error"}
+			c.IndentedJSON(http.StatusOK, response)
+		}
+	}
+}
+
 func addItem(c *gin.Context) {
 	body, err := c.GetRawData()
 	if err != nil {
@@ -70,21 +124,26 @@ func addItem(c *gin.Context) {
 	var entry Item
 	json.Unmarshal(body, &entry)
 
-	if (len(strings.TrimSpace(entry.Name)) == 0) {
-		response := Response{Action: "Post", Sucessful: false, Context: "Please provide a Name"}
-		c.IndentedJSON(http.StatusBadRequest, response);
+	if (entry.UserID == 0) {
+		response := Response{Action: "Post", Sucessful: false, Context: "Please enter a target ID"}
+		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
-
-		rand.Seed(time.Now().UnixNano())
-		entry.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
-
-		result := db.Create(&entry)
-		if result.Error != nil {
-			response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
-			c.IndentedJSON(http.StatusBadRequest, response)
+		if (len(strings.TrimSpace(entry.Name)) == 0) {
+			response := Response{Action: "Post", Sucessful: false, Context: "Please provide a Name"}
+			c.IndentedJSON(http.StatusBadRequest, response);
 		} else {
-			response := Response{Action: "Patch", Sucessful: true, Context: "Updated without error"}
-			c.IndentedJSON(http.StatusOK, response)
+
+			rand.Seed(time.Now().UnixNano())
+			entry.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
+
+			result := db.Create(&entry)
+			if result.Error != nil {
+				response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+				c.IndentedJSON(http.StatusBadRequest, response)
+			} else {
+				response := Response{Action: "Patch", Sucessful: true, Context: "Updated without error"}
+				c.IndentedJSON(http.StatusOK, response)
+			}
 		}
 	}
 }
@@ -97,54 +156,78 @@ func getItems(c *gin.Context) {
 		response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
 		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
-		nameFilter, nameFilterPresent := c.GetQuery("rawName")
-		numFilter := c.Param("id")
-		numFilterPresent := (numFilter != "")
-		collection := Collection{Items: items}
-		count := 0;
-		idFilter,_ := strconv.Atoi(numFilter)
-		if (numFilterPresent && (idFilter < 1000000000 || idFilter > 2147483647)) {
-			response := Response{Action: "Post", Sucessful: false, Context: "ID given either too high or too low"}
+		body, err := c.GetRawData()
+		if err != nil {
+			response := Response{Action: "Get", Sucessful: false, Context: err.Error()}
 			c.IndentedJSON(http.StatusBadRequest, response)
-		} 
-		for i := 0; i < len(collection.Items); i++ {
-			validEntry := true;
-			if (nameFilterPresent) {
-				if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
-					validEntry = false;
+		} else {
+			var entry Item
+			json.Unmarshal(body, &entry)
+			fmt.Print(entry.UserID)
+			if entry.UserID == 0 {
+				response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
+				c.IndentedJSON(http.StatusBadRequest, response)
+			} else {
+				nameFilter, nameFilterPresent := c.GetQuery("rawName")
+				numFilter := c.Param("id")
+				numFilterPresent := (numFilter != "")
+				collection := Collection{Items: items}
+				count := 0;
+				idFilter,_ := strconv.Atoi(numFilter)
+				if (numFilterPresent && (idFilter < 1000000000 || idFilter > 2147483647)) {
+					response := Response{Action: "Get", Sucessful: false, Context: "ID given either too high or too low"}
+					c.IndentedJSON(http.StatusBadRequest, response)
+				} 
+				for i := 0; i < len(collection.Items); i++ {
+					validEntry := true;
+					if (nameFilterPresent) {
+						if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
+							validEntry = false;
+						}
+					}
+					if (numFilterPresent) {
+						if (collection.Items[i].ID != idFilter) {
+							validEntry = false;
+						}
+					}
+					if (entry.UserID != collection.Items[i].UserID) {
+						validEntry = false;
+					}
+					if (validEntry) {
+						count++;
+					}
 				}
-			}
-			if (numFilterPresent) {
-				if (collection.Items[i].ID != idFilter) {
-					validEntry = false;
+				var finalCollection Collection
+				finalCollection.Items = make([]Item, 0)
+				if (count > 0) {
+					newCollection := make([]Item, count)
+					index := 0
+					for i := 0; i < len(collection.Items); i++ {
+						validEntry := true;
+						if (nameFilterPresent) {
+							if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
+								validEntry = false;
+							}
+						}
+						if (numFilterPresent) {
+							idFilter, _ := strconv.Atoi(numFilter);
+							if (collection.Items[i].ID != idFilter) {
+								validEntry = false;
+							}
+						}
+						if (entry.UserID != collection.Items[i].UserID) {
+							validEntry = false;
+						}
+						if (validEntry) {
+							newCollection[index] = collection.Items[i];
+							index++;
+						}
+					}
+					finalCollection.Items = newCollection
 				}
-			}
-			if (validEntry) {
-				count++;
+				c.IndentedJSON(http.StatusOK, finalCollection)
 			}
 		}
-		newCollection := make([]Item, count)
-		index := 0
-		for i := 0; i < len(collection.Items); i++ {
-			validEntry := true;
-			if (nameFilterPresent) {
-				if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
-					validEntry = false;
-				}
-			}
-			if (numFilterPresent) {
-				idFilter, _ := strconv.Atoi(numFilter);
-				if (collection.Items[i].ID != idFilter) {
-					validEntry = false;
-				}
-			}
-			if (validEntry) {
-				newCollection[index] = collection.Items[i];
-				index++;
-			}
-		}
-		collection.Items = newCollection
-		c.IndentedJSON(http.StatusOK, collection)
 	}
 }
 
@@ -211,11 +294,15 @@ func main() {
 	router.Use(cors.New(config))
 
 	router.GET("/health", checkHealth)
+
 	router.POST("/addItem", addItem)
 	router.DELETE("/removeItem/:id", removeItem)
 	router.GET("/getItems/:id", getItems)
 	router.GET("/getItems", getItems)
 	router.PATCH("/updateItem/:id", patchItem)
+
+	router.POST("/addUser", addUser)
+	router.GET("/validateUser", validateUser)
 
 	router.Run("0.0.0.0:8080")
 }
