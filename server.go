@@ -1,16 +1,15 @@
 package main
 
 import (
-	
-	//"database/sql"
+
 	"fmt"
 	"net/http"
 	"strconv"
 	
-	//"time"
+	"time"
 	"strings"
-	//"encoding/json"
-	//"math/rand"
+	"encoding/json"
+	"math/rand"
 	"gorm.io/gorm"
 	"gorm.io/driver/postgres"
 	
@@ -49,17 +48,11 @@ func connectDB() *gorm.DB {
 	fmt.Print(db);
 	return db
 }
-/*
+
 func checkHealth(c *gin.Context) {
-	sqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-	"password=%s dbname=%s sslmode=disable",
-	host, port, user, password, dbname)
-	db, _ := sql.Open("postgres", sqlInfo)
-	db.Ping()
-	_, err := db.Query(`
-		SELECT * FROM items
-		WHERE id = -1`)
-	if (err == nil) {
+	var blank Item
+	result := db.First(&blank)
+	if (result.Error == nil) {
 		status := Response{Action: "Health", Sucessful: true, Context: "Systems are OK"}
 		c.IndentedJSON(http.StatusOK, status)
 	} else {
@@ -69,38 +62,33 @@ func checkHealth(c *gin.Context) {
 }
 
 func addItem(c *gin.Context) {
-	db.Ping()
 	body, err := c.GetRawData()
 	if err != nil {
 		response := Response{Action: "Post", Sucessful: false, Context: err.Error()}
 		c.IndentedJSON(http.StatusBadRequest, response)
 	}
-	var data Item
-	json.Unmarshal(body, &data)
-	fmt.Println(data.Name)
-	if data.Name == "" {
-		response := Response{Action: "Post", Sucessful: false, Context: "No 'name' key found"}
-		c.IndentedJSON(http.StatusBadRequest, response)
+	var entry Item
+	json.Unmarshal(body, &entry)
+
+	if (len(strings.TrimSpace(entry.Name)) == 0) {
+		response := Response{Action: "Post", Sucessful: false, Context: "Please provide a Name"}
+		c.IndentedJSON(http.StatusBadRequest, response);
 	} else {
+
 		rand.Seed(time.Now().UnixNano())
-		min := 1000000000
-		max := 2147483647
-		assignedID := rand.Intn(max - min + 1) + min
-		//SQL command
-		insertCMD := `INSERT INTO items (ID, Name, Description, Priority, Completed)
-		VALUES ($1, $2, $3, $4, $5)`
-		_, cmderr := db.Exec(insertCMD, assignedID, data.Name, data.Desc, data.TopPriority, data.Completed)
-		if cmderr != nil {
-			response := Response{Action: "SQL", Sucessful: false, Context: cmderr.Error()}
+		entry.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
+
+		result := db.Create(&entry)
+		if result.Error != nil {
+			response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
 			c.IndentedJSON(http.StatusBadRequest, response)
 		} else {
-			//Send message for successful POST method
-			response := Response{Action: "Post", Sucessful: true, Context: "Posted without error"}
+			response := Response{Action: "Patch", Sucessful: true, Context: "Updated without error"}
 			c.IndentedJSON(http.StatusOK, response)
 		}
 	}
 }
-*/
+
 //Handler to recieve GET method sent on the /getItems endpoint
 func getItems(c *gin.Context) {
 	var items []Item
@@ -108,116 +96,108 @@ func getItems(c *gin.Context) {
 	if result.Error != nil {
 		response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
 		c.IndentedJSON(http.StatusBadRequest, response)
+	} else {
+		nameFilter, nameFilterPresent := c.GetQuery("rawName")
+		numFilter := c.Param("id")
+		numFilterPresent := (numFilter != "")
+		collection := Collection{Items: items}
+		count := 0;
+		idFilter,_ := strconv.Atoi(numFilter)
+		if (numFilterPresent && (idFilter < 1000000000 || idFilter > 2147483647)) {
+			response := Response{Action: "Post", Sucessful: false, Context: "ID given either too high or too low"}
+			c.IndentedJSON(http.StatusBadRequest, response)
+		} 
+		for i := 0; i < len(collection.Items); i++ {
+			validEntry := true;
+			if (nameFilterPresent) {
+				if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
+					validEntry = false;
+				}
+			}
+			if (numFilterPresent) {
+				if (collection.Items[i].ID != idFilter) {
+					validEntry = false;
+				}
+			}
+			if (validEntry) {
+				count++;
+			}
+		}
+		newCollection := make([]Item, count)
+		index := 0
+		for i := 0; i < len(collection.Items); i++ {
+			validEntry := true;
+			if (nameFilterPresent) {
+				if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
+					validEntry = false;
+				}
+			}
+			if (numFilterPresent) {
+				idFilter, _ := strconv.Atoi(numFilter);
+				if (collection.Items[i].ID != idFilter) {
+					validEntry = false;
+				}
+			}
+			if (validEntry) {
+				newCollection[index] = collection.Items[i];
+				index++;
+			}
+		}
+		collection.Items = newCollection
+		c.IndentedJSON(http.StatusOK, collection)
 	}
-	nameFilter, nameFilterPresent := c.GetQuery("rawName")
-	numFilter := c.Param("id")
-	numFilterPresent := (numFilter != "")
-	collection := Collection{Items: items}
-	count := 0;
-	for i := 0; i < len(collection.Items); i++ {
-		validEntry := true;
-		if (nameFilterPresent) {
-			if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
-				validEntry = false;
-			}
-		}
-		if (numFilterPresent) {
-			idFilter, _ := strconv.Atoi(numFilter);
-			if (collection.Items[i].ID != idFilter) {
-				validEntry = false;
-			}
-		}
-		if (validEntry) {
-			count++;
-		}
-	}
-	newCollection := make([]Item, count)
-	index := 0
-	for i := 0; i < len(collection.Items); i++ {
-		validEntry := true;
-		if (nameFilterPresent) {
-			if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
-				validEntry = false;
-			}
-		}
-		if (numFilterPresent) {
-			idFilter, _ := strconv.Atoi(numFilter);
-			if (collection.Items[i].ID != idFilter) {
-				validEntry = false;
-			}
-		}
-		if (validEntry) {
-			newCollection[index] = collection.Items[i];
-			index++;
-		}
-	}
-	collection.Items = newCollection
-	c.IndentedJSON(http.StatusOK, collection)
 }
-/*
+
 
 //Handler for /removeItem endpoint with DELETE method
 func removeItem(c *gin.Context) {
-	db.Ping()
-	//Get value from Path
-	identifier := c.Param("id")
-	//SQL command
-	_, err := db.Query(
-		`DELETE FROM items
-		WHERE id = $1;`, identifier)
-	if err != nil {
-		response := Response{Action: "SQL", Sucessful: false, Context: err.Error()}
-		c.IndentedJSON(http.StatusOK, response)
+	id := c.Param("id")
+	if (id == "") {
+		response := Response{Action: "Delete", Sucessful: false, Context: "Please enter an ID"}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	}
+	numId,_ := strconv.Atoi(id) 
+	if (numId < 1000000000 || numId > 2147483647) {
+		response := Response{Action: "Delete", Sucessful: false, Context: "ID given either too high or too low"}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	}
+	var entry Item
+	result := db.First(&entry, numId)
+	if result.Error != nil {
+		response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
-		//Send message for successful POST method
-		response := Response{Action: "Delete", Sucessful: true, Context: "Removed without error"}
+		db.Delete(&entry)
+		response := Response{Action: "Delete", Sucessful: true, Context: "Deleted without error"}
 		c.IndentedJSON(http.StatusOK, response)
 	}
 }
+
 
 //Handler for PATCH requests to /patchItem endpoint
 func patchItem(c *gin.Context) {
-	db.Ping()
-
-	//Get data from database
-	rows, pullErr := db.Query("SELECT * from items")
-	if pullErr != nil {
-		response := Response{Action: "SQL", Sucessful: false, Context: pullErr.Error()}
-		c.IndentedJSON(http.StatusOK, response)
-	}
-	defer rows.Close()
-
-	//Search for correct ID
-	found := false
-	target, _ := strconv.Atoi(c.Param("id"))
-
 	body,_ := c.GetRawData()
-	var input Item
-	json.Unmarshal(body, &input) 
-	for rows.Next() {
-		var entry Item
-		//Make a new entry with data from the database
-		rows.Scan(&entry.ID, &entry.Name, &entry.Desc, &entry.TopPriority, &entry.Completed)
-		if (entry.ID == target) {
-			//Push to database
-			found = true
-			db.Query(`
-			UPDATE items
-			SET name = $1, description = $2, priority = $3, completed = $4
-			WHERE id = $5;`, input.Name, input.Desc, input.TopPriority, input.Completed, entry.ID)
-		}
-	}
-	//Runs if could not find given ID
-	if (!found) {
-		response := Response{Action: "Patch", Sucessful: false, Context: "No entry found matching given ID"}
-		c.IndentedJSON(http.StatusOK, response)
+	var entry Item
+	json.Unmarshal(body, &entry)
+
+	id := c.Param("id")
+
+	var tableEntry Item
+	result := db.First(&tableEntry, id)
+	if result.Error != nil {
+		response := Response{Action: "SQL", Sucessful: false, Context: "No entry matching given ID"}
+		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
-		//Runs on success
-		response := Response{Action: "Patch", Sucessful: true, Context: "Updated entry without error"}
-		c.IndentedJSON(http.StatusOK, response)	
+		tableEntry.Name = entry.Name;
+		tableEntry.Description = entry.Description;
+		tableEntry.TopPriority = entry.TopPriority;
+		tableEntry.Completed = entry.Completed;
+
+		db.Save(&tableEntry)
 	}
+
 }
-*/
+
 func main() {
 
 	db = connectDB()
@@ -230,14 +210,12 @@ func main() {
 
 	router.Use(cors.New(config))
 
-	/*router.GET("/health", checkHealth)
+	router.GET("/health", checkHealth)
 	router.POST("/addItem", addItem)
 	router.DELETE("/removeItem/:id", removeItem)
-	*/
 	router.GET("/getItems/:id", getItems)
 	router.GET("/getItems", getItems)
-	/*
-	router.PATCH("/updateItem/:id", patchItem)*/
+	router.PATCH("/updateItem/:id", patchItem)
 
 	router.Run("0.0.0.0:8080")
 }
