@@ -2,10 +2,10 @@ package main
 
 import (
 
+    "golang.org/x/crypto/bcrypt"
 	"fmt"
 	"net/http"
 	"strconv"
-	
 	"time"
 	"strings"
 	"encoding/json"
@@ -76,15 +76,20 @@ func validateUser(c *gin.Context) {
 	} else {
 		var user User
 		json.Unmarshal(body, &user)
+		enteredPassword := user.Password
 
-		result := db.Where("username = ? AND password = ?", user.Username, user.Password).First(&user)
-		fmt.Println(user)
+		result := db.Where("username = ?", user.Username).First(&user)
 		if result.Error != nil {
-			fmt.Println(result.Error.Error())
 			response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
 			c.IndentedJSON(http.StatusBadRequest, response) 
 		} else {
-			c.IndentedJSON(http.StatusOK, user)	
+			err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(enteredPassword))
+			if err != nil {
+				response := Response{Action: "Validate", Sucessful: false, Context: "Username or Password Incorrect"}
+				c.IndentedJSON(http.StatusBadRequest, response)
+			} else {
+				c.IndentedJSON(http.StatusOK, user)	
+			}
 		}
 	}
 }
@@ -103,14 +108,20 @@ func addUser(c *gin.Context) {
 	} else {
 		rand.Seed(time.Now().UnixNano())
 		user.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
-
-		result := db.Create(&user)
-		if result.Error != nil {
-			response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+		hash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+		if err != nil {
+			response := Response{Action: "Encrypt", Sucessful: false, Context: err.Error()}
 			c.IndentedJSON(http.StatusBadRequest, response)
 		} else {
-			response := Response{Action: "Post", Sucessful: true, Context: "Posted without error"}
-			c.IndentedJSON(http.StatusOK, response)
+			user.Password = string(hash)
+			result := db.Create(&user)
+			if result.Error != nil {
+				response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+				c.IndentedJSON(http.StatusBadRequest, response)
+			} else {
+				response := Response{Action: "Post", Sucessful: true, Context: "Posted without error"}
+				c.IndentedJSON(http.StatusOK, response)
+			}
 		}
 	}
 }
