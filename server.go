@@ -2,10 +2,10 @@ package main
 
 import (
 
+    "golang.org/x/crypto/bcrypt"
 	"fmt"
 	"net/http"
 	"strconv"
-	
 	"time"
 	"strings"
 	"encoding/json"
@@ -36,6 +36,13 @@ type Item struct {
 	Description      string `json:"desc"`
 	TopPriority  bool   `json:"topPriority"`
 	Completed bool   `json:"completed"`
+	UserID int `json:"userId"`
+}
+
+type User struct {
+	ID int `json:"id"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 func connectDB() *gorm.DB {
@@ -61,6 +68,64 @@ func checkHealth(c *gin.Context) {
 	}
 }
 
+func validateUser(c *gin.Context) {
+	body, err := c.GetRawData()
+	if err != nil {
+		response := Response{Action: "Validate", Sucessful: false, Context: err.Error()}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	} else {
+		var user User
+		json.Unmarshal(body, &user)
+		enteredPassword := user.Password
+		fmt.Println(user)
+
+		result := db.Where("username = ?", user.Username).First(&user)
+		if result.Error != nil {
+			response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+			c.IndentedJSON(http.StatusBadRequest, response) 
+		} else {
+			err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(enteredPassword))
+			if err != nil {
+				response := Response{Action: "Validate", Sucessful: false, Context: "Username or Password Incorrect"}
+				c.IndentedJSON(http.StatusBadRequest, response)
+			} else {
+				c.IndentedJSON(http.StatusOK, user)	
+			}
+		}
+	}
+}
+
+func addUser(c *gin.Context) {
+	body, err := c.GetRawData()
+	if err != nil {
+		response := Response{Action: "Post", Sucessful: false, Context: err.Error()}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	}
+	var user User
+	json.Unmarshal(body, &user)
+	if strings.TrimSpace(user.Password) == "" || strings.TrimSpace(user.Username) == "" {
+		response := Response{Action: "Post", Sucessful: false, Context: "Please enter a username AND password"}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	} else {
+		rand.Seed(time.Now().UnixNano())
+		user.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
+		hash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+		if err != nil {
+			response := Response{Action: "Encrypt", Sucessful: false, Context: err.Error()}
+			c.IndentedJSON(http.StatusBadRequest, response)
+		} else {
+			user.Password = string(hash)
+			result := db.Create(&user)
+			if result.Error != nil {
+				response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+				c.IndentedJSON(http.StatusConflict, response)
+			} else {
+				c.IndentedJSON(http.StatusOK, user)
+			}
+		}
+	}
+}
+
 func addItem(c *gin.Context) {
 	body, err := c.GetRawData()
 	if err != nil {
@@ -69,82 +134,91 @@ func addItem(c *gin.Context) {
 	}
 	var entry Item
 	json.Unmarshal(body, &entry)
-
-	if (len(strings.TrimSpace(entry.Name)) == 0) {
-		response := Response{Action: "Post", Sucessful: false, Context: "Please provide a Name"}
-		c.IndentedJSON(http.StatusBadRequest, response);
+	fmt.Println(entry)
+	if (entry.UserID == 0) {
+		response := Response{Action: "Post", Sucessful: false, Context: "Please enter a target ID"}
+		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
+		if (len(strings.TrimSpace(entry.Name)) == 0) {
+			response := Response{Action: "Post", Sucessful: false, Context: "Please provide a Name"}
+			c.IndentedJSON(http.StatusBadRequest, response);
+		} else {
 
-		rand.Seed(time.Now().UnixNano())
-		entry.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
+			rand.Seed(time.Now().UnixNano())
+			entry.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
 
-		result := db.Create(&entry)
-		if result.Error != nil {
-			response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+			result := db.Create(&entry)
+			if result.Error != nil {
+				response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+				c.IndentedJSON(http.StatusBadRequest, response)
+			} else {
+				response := Response{Action: "Patch", Sucessful: true, Context: "Updated without error"}
+				c.IndentedJSON(http.StatusOK, response)
+			}
+		}
+	}
+}
+
+func getItemsById(c *gin.Context) {
+	body, err := c.GetQuery("userId")
+	if !err {
+		response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	} else {
+		if body == "" {
+			response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
 			c.IndentedJSON(http.StatusBadRequest, response)
 		} else {
-			response := Response{Action: "Patch", Sucessful: true, Context: "Updated without error"}
-			c.IndentedJSON(http.StatusOK, response)
+			data := c.Param("id")
+			if data == "" {
+				response := Response{Action: "Get", Sucessful: false, Context: "Please enter a Item ID"}
+				c.IndentedJSON(http.StatusBadRequest, response)
+			} else {
+				var collection Collection
+				result := db.Where("id = ? AND user_Id = ?", data, body).Find(&collection.Items)
+				if result.Error != nil {
+					response := Response{Action: "Get", Sucessful: false, Context: result.Error.Error()}
+					c.IndentedJSON(http.StatusBadRequest, response)
+				} else {
+					c.IndentedJSON(http.StatusOK, collection)
+				}
+			}
 		}
 	}
 }
 
 //Handler to recieve GET method sent on the /getItems endpoint
 func getItems(c *gin.Context) {
-	var items []Item
-	result := db.Find(&items)
-	if result.Error != nil {
-		response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+	body, err := c.GetQuery("userId")
+	if !err {
+		response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
 		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
-		nameFilter, nameFilterPresent := c.GetQuery("rawName")
-		numFilter := c.Param("id")
-		numFilterPresent := (numFilter != "")
-		collection := Collection{Items: items}
-		count := 0;
-		idFilter,_ := strconv.Atoi(numFilter)
-		if (numFilterPresent && (idFilter < 1000000000 || idFilter > 2147483647)) {
-			response := Response{Action: "Post", Sucessful: false, Context: "ID given either too high or too low"}
+		if body == "" {
+			response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
 			c.IndentedJSON(http.StatusBadRequest, response)
-		} 
-		for i := 0; i < len(collection.Items); i++ {
-			validEntry := true;
+		} else {
+			nameFilter, nameFilterPresent := c.GetQuery("rawName")
+			nameFilter = "%" + nameFilter + "%"
+			var collection Collection
 			if (nameFilterPresent) {
-				if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
-					validEntry = false;
+				result := db.Where("name LIKE ? AND user_Id = ?", nameFilter, body).Find(&collection.Items)
+				if result.Error != nil {
+					response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+					c.IndentedJSON(http.StatusBadRequest, response)
+				} else {
+					c.IndentedJSON(http.StatusOK, collection)
 				}
-			}
-			if (numFilterPresent) {
-				if (collection.Items[i].ID != idFilter) {
-					validEntry = false;
+			} else {
+				result := db.Where("user_Id = ?", body).Find(&collection.Items)
+				if result.Error != nil {
+					response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+					c.IndentedJSON(http.StatusBadRequest, response)
+				} else {
+					c.IndentedJSON(http.StatusOK, collection)
 				}
-			}
-			if (validEntry) {
-				count++;
 			}
 		}
-		newCollection := make([]Item, count)
-		index := 0
-		for i := 0; i < len(collection.Items); i++ {
-			validEntry := true;
-			if (nameFilterPresent) {
-				if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
-					validEntry = false;
-				}
-			}
-			if (numFilterPresent) {
-				idFilter, _ := strconv.Atoi(numFilter);
-				if (collection.Items[i].ID != idFilter) {
-					validEntry = false;
-				}
-			}
-			if (validEntry) {
-				newCollection[index] = collection.Items[i];
-				index++;
-			}
-		}
-		collection.Items = newCollection
-		c.IndentedJSON(http.StatusOK, collection)
 	}
 }
 
@@ -211,11 +285,15 @@ func main() {
 	router.Use(cors.New(config))
 
 	router.GET("/health", checkHealth)
+
 	router.POST("/addItem", addItem)
 	router.DELETE("/removeItem/:id", removeItem)
-	router.GET("/getItems/:id", getItems)
+	router.GET("/getItemById/:id", getItemsById)
 	router.GET("/getItems", getItems)
 	router.PATCH("/updateItem/:id", patchItem)
+
+	router.POST("/addUser", addUser)
+	router.POST("/validateUser", validateUser)
 
 	router.Run("0.0.0.0:8080")
 }
