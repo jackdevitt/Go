@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"os"
 	"strings"
 	"encoding/json"
 	"math/rand"
@@ -16,6 +17,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
+	"github.com/joho/godotenv"
 )
 
 var db *gorm.DB;
@@ -46,13 +48,17 @@ type User struct {
 }
 
 func connectDB() *gorm.DB {
-	dsn := "host=localhost user=postgres password=password dbname=postgres port=8000 sslmode=disable TimeZone=America/New_York"
+	err := godotenv.Load(".env")
+	if err != nil {
+		fmt.Println("Failed to load .env")
+	}
+	dsn := os.Getenv("CONNSTRING")
+	fmt.Println("Connection String: ", dsn)
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{});
 	if err != nil {
-		fmt.Print(err.Error());
+		fmt.Println(err.Error());
 	}
 	db.AutoMigrate(&Item{});
-	fmt.Print(db);
 	return db
 }
 
@@ -203,6 +209,7 @@ func getItemsById(c *gin.Context) {
 func getItems(c *gin.Context) {
 
 	header := c.Request.Header["User-Id"]
+	fmt.Println(header)
 	if len(header) == 0 {
 		response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
 		c.IndentedJSON(http.StatusBadRequest, response)
