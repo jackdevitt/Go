@@ -135,36 +135,48 @@ func addItem(c *gin.Context) {
 	var entry Item
 	json.Unmarshal(body, &entry)
 	fmt.Println(entry)
-	if (entry.UserID == 0) {
+
+	header := c.Request.Header["User-Id"]
+	if len(header) == 0 {
 		response := Response{Action: "Post", Sucessful: false, Context: "Please enter a target ID"}
 		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
-		if (len(strings.TrimSpace(entry.Name)) == 0) {
-			response := Response{Action: "Post", Sucessful: false, Context: "Please provide a Name"}
-			c.IndentedJSON(http.StatusBadRequest, response);
+		strUserId := header[0]
+		intUserId,_ := strconv.Atoi(strUserId)
+		entry.UserID = intUserId
+
+		if (entry.UserID == 0) {
+			response := Response{Action: "Post", Sucessful: false, Context: "Please enter a target ID"}
+			c.IndentedJSON(http.StatusBadRequest, response)
 		} else {
-
-			rand.Seed(time.Now().UnixNano())
-			entry.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
-
-			result := db.Create(&entry)
-			if result.Error != nil {
-				response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
-				c.IndentedJSON(http.StatusBadRequest, response)
+			if (len(strings.TrimSpace(entry.Name)) == 0) {
+				response := Response{Action: "Post", Sucessful: false, Context: "Please provide a Name"}
+				c.IndentedJSON(http.StatusBadRequest, response);
 			} else {
-				response := Response{Action: "Patch", Sucessful: true, Context: "Updated without error"}
-				c.IndentedJSON(http.StatusOK, response)
+
+				rand.Seed(time.Now().UnixNano())
+				entry.ID = rand.Intn(2147483647 - 1000000000) + 1000000000
+
+				result := db.Create(&entry)
+				if result.Error != nil {
+					response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+					c.IndentedJSON(http.StatusBadRequest, response)
+				} else {
+					response := Response{Action: "Patch", Sucessful: true, Context: "Updated without error"}
+					c.IndentedJSON(http.StatusOK, response)
+				}
 			}
 		}
 	}
 }
 
 func getItemsById(c *gin.Context) {
-	body, err := c.GetQuery("userId")
-	if !err {
+	header := c.Request.Header["User-Id"]
+	if len(header) == 0 {
 		response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
 		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
+		body := header[0]
 		if body == "" {
 			response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
 			c.IndentedJSON(http.StatusBadRequest, response)
@@ -189,11 +201,13 @@ func getItemsById(c *gin.Context) {
 
 //Handler to recieve GET method sent on the /getItems endpoint
 func getItems(c *gin.Context) {
-	body, err := c.GetQuery("userId")
-	if !err {
+
+	header := c.Request.Header["User-Id"]
+	if len(header) == 0 {
 		response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
 		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
+		body := header[0]
 		if body == "" {
 			response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
 			c.IndentedJSON(http.StatusBadRequest, response)
@@ -269,7 +283,6 @@ func patchItem(c *gin.Context) {
 
 		db.Save(&tableEntry)
 	}
-
 }
 
 func main() {
@@ -279,7 +292,7 @@ func main() {
 
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = true
-	config.AllowHeaders = []string{"Origin", "Content-Type"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "User-Id"}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"}
 
 	router.Use(cors.New(config))
