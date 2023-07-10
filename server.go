@@ -77,6 +77,7 @@ func validateUser(c *gin.Context) {
 		var user User
 		json.Unmarshal(body, &user)
 		enteredPassword := user.Password
+		fmt.Println(user)
 
 		result := db.Where("username = ?", user.Username).First(&user)
 		if result.Error != nil {
@@ -117,10 +118,9 @@ func addUser(c *gin.Context) {
 			result := db.Create(&user)
 			if result.Error != nil {
 				response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
-				c.IndentedJSON(http.StatusBadRequest, response)
+				c.IndentedJSON(http.StatusConflict, response)
 			} else {
-				response := Response{Action: "Post", Sucessful: true, Context: "Posted without error"}
-				c.IndentedJSON(http.StatusOK, response)
+				c.IndentedJSON(http.StatusOK, user)
 			}
 		}
 	}
@@ -134,7 +134,7 @@ func addItem(c *gin.Context) {
 	}
 	var entry Item
 	json.Unmarshal(body, &entry)
-
+	fmt.Println(entry)
 	if (entry.UserID == 0) {
 		response := Response{Action: "Post", Sucessful: false, Context: "Please enter a target ID"}
 		c.IndentedJSON(http.StatusBadRequest, response)
@@ -159,84 +159,64 @@ func addItem(c *gin.Context) {
 	}
 }
 
-//Handler to recieve GET method sent on the /getItems endpoint
-func getItems(c *gin.Context) {
-	var items []Item
-	result := db.Find(&items)
-	if result.Error != nil {
-		response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+func getItemsById(c *gin.Context) {
+	body, err := c.GetQuery("userId")
+	if !err {
+		response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
 		c.IndentedJSON(http.StatusBadRequest, response)
 	} else {
-		body, err := c.GetRawData()
-		if err != nil {
-			response := Response{Action: "Get", Sucessful: false, Context: err.Error()}
+		if body == "" {
+			response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
 			c.IndentedJSON(http.StatusBadRequest, response)
 		} else {
-			var entry Item
-			json.Unmarshal(body, &entry)
-			fmt.Print(entry.UserID)
-			if entry.UserID == 0 {
-				response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
+			data := c.Param("id")
+			if data == "" {
+				response := Response{Action: "Get", Sucessful: false, Context: "Please enter a Item ID"}
 				c.IndentedJSON(http.StatusBadRequest, response)
 			} else {
-				nameFilter, nameFilterPresent := c.GetQuery("rawName")
-				numFilter := c.Param("id")
-				numFilterPresent := (numFilter != "")
-				collection := Collection{Items: items}
-				count := 0;
-				idFilter,_ := strconv.Atoi(numFilter)
-				if (numFilterPresent && (idFilter < 1000000000 || idFilter > 2147483647)) {
-					response := Response{Action: "Get", Sucessful: false, Context: "ID given either too high or too low"}
+				var collection Collection
+				result := db.Where("id = ? AND user_Id = ?", data, body).Find(&collection.Items)
+				if result.Error != nil {
+					response := Response{Action: "Get", Sucessful: false, Context: result.Error.Error()}
 					c.IndentedJSON(http.StatusBadRequest, response)
-				} 
-				for i := 0; i < len(collection.Items); i++ {
-					validEntry := true;
-					if (nameFilterPresent) {
-						if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
-							validEntry = false;
-						}
-					}
-					if (numFilterPresent) {
-						if (collection.Items[i].ID != idFilter) {
-							validEntry = false;
-						}
-					}
-					if (entry.UserID != collection.Items[i].UserID) {
-						validEntry = false;
-					}
-					if (validEntry) {
-						count++;
-					}
+				} else {
+					c.IndentedJSON(http.StatusOK, collection)
 				}
-				var finalCollection Collection
-				finalCollection.Items = make([]Item, 0)
-				if (count > 0) {
-					newCollection := make([]Item, count)
-					index := 0
-					for i := 0; i < len(collection.Items); i++ {
-						validEntry := true;
-						if (nameFilterPresent) {
-							if (!strings.Contains(strings.ToLower(collection.Items[i].Name), strings.ToLower(nameFilter))) {
-								validEntry = false;
-							}
-						}
-						if (numFilterPresent) {
-							idFilter, _ := strconv.Atoi(numFilter);
-							if (collection.Items[i].ID != idFilter) {
-								validEntry = false;
-							}
-						}
-						if (entry.UserID != collection.Items[i].UserID) {
-							validEntry = false;
-						}
-						if (validEntry) {
-							newCollection[index] = collection.Items[i];
-							index++;
-						}
-					}
-					finalCollection.Items = newCollection
+			}
+		}
+	}
+}
+
+//Handler to recieve GET method sent on the /getItems endpoint
+func getItems(c *gin.Context) {
+	body, err := c.GetQuery("userId")
+	if !err {
+		response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
+		c.IndentedJSON(http.StatusBadRequest, response)
+	} else {
+		if body == "" {
+			response := Response{Action: "Get", Sucessful: false, Context: "Please enter a target ID"}
+			c.IndentedJSON(http.StatusBadRequest, response)
+		} else {
+			nameFilter, nameFilterPresent := c.GetQuery("rawName")
+			nameFilter = "%" + nameFilter + "%"
+			var collection Collection
+			if (nameFilterPresent) {
+				result := db.Where("name LIKE ? AND user_Id = ?", nameFilter, body).Find(&collection.Items)
+				if result.Error != nil {
+					response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+					c.IndentedJSON(http.StatusBadRequest, response)
+				} else {
+					c.IndentedJSON(http.StatusOK, collection)
 				}
-				c.IndentedJSON(http.StatusOK, finalCollection)
+			} else {
+				result := db.Where("user_Id = ?", body).Find(&collection.Items)
+				if result.Error != nil {
+					response := Response{Action: "SQL", Sucessful: false, Context: result.Error.Error()}
+					c.IndentedJSON(http.StatusBadRequest, response)
+				} else {
+					c.IndentedJSON(http.StatusOK, collection)
+				}
 			}
 		}
 	}
@@ -308,12 +288,12 @@ func main() {
 
 	router.POST("/addItem", addItem)
 	router.DELETE("/removeItem/:id", removeItem)
-	router.GET("/getItems/:id", getItems)
+	router.GET("/getItemById/:id", getItemsById)
 	router.GET("/getItems", getItems)
 	router.PATCH("/updateItem/:id", patchItem)
 
 	router.POST("/addUser", addUser)
-	router.GET("/validateUser", validateUser)
+	router.POST("/validateUser", validateUser)
 
 	router.Run("0.0.0.0:8080")
 }
