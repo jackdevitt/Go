@@ -1,0 +1,198 @@
+basePath: /
+definitions:
+  main.itemRequirements:
+    properties:
+      completed:
+        type: boolean
+      desc:
+        type: string
+      name:
+        type: string
+      topPriority:
+        type: boolean
+    type: object
+  main.userRequirements:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: This is a todo-list server.
+  title: Gin Swagger todo-list API
+  version: "1.0"
+paths:
+  /addItem:
+    post:
+      consumes:
+      - '*/*'
+      description: add task to given user
+      parameters:
+      - description: UserID
+        in: header
+        name: User-Id
+        required: true
+        type: string
+      - description: Item
+        in: body
+        name: Item
+        required: true
+        schema:
+          $ref: '#/definitions/main.itemRequirements'
+      produces:
+      - application/json
+      responses: {}
+      summary: addItem
+      tags:
+      - tasks
+  /addUser:
+    post:
+      consumes:
+      - '*/*'
+      description: add user with given username and password
+      parameters:
+      - description: Item
+        in: body
+        name: Item
+        required: true
+        schema:
+          $ref: '#/definitions/main.userRequirements'
+      produces:
+      - application/json
+      responses: {}
+      summary: addUser
+      tags:
+      - users
+  /getItemById/{id}:
+    get:
+      consumes:
+      - '*/*'
+      description: get tasks of given user ID and task ID
+      parameters:
+      - description: UserID
+        in: header
+        name: User-Id
+        required: true
+        type: string
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses: {}
+      summary: getItemById
+      tags:
+      - tasks
+  /getItems:
+    get:
+      consumes:
+      - '*/*'
+      description: get tasks of given user ID
+      parameters:
+      - description: UserID
+        in: header
+        name: User-Id
+        required: true
+        type: string
+      - description: Filter
+        in: query
+        name: rawName
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: getItems
+      tags:
+      - tasks
+  /getItemsByCount:
+    get:
+      consumes:
+      - '*/*'
+      description: get a certain number of tasks of given user ID
+      parameters:
+      - description: UserID
+        in: header
+        name: User-Id
+        required: true
+        type: string
+      - description: Filter
+        in: query
+        name: rawName
+        type: string
+      - description: Count
+        in: query
+        name: count
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: getItemsByCount
+      tags:
+      - tasks
+  /removeItem/{id}:
+    delete:
+      consumes:
+      - '*/*'
+      description: Remove tasks with given ID
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses: {}
+      summary: removeItem
+      tags:
+      - tasks
+  /updateItem/{id}:
+    patch:
+      consumes:
+      - '*/*'
+      description: Update tasks with given ID
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Name
+        in: body
+        name: Item
+        required: true
+        schema:
+          $ref: '#/definitions/main.itemRequirements'
+      produces:
+      - application/json
+      responses: {}
+      summary: patchItem
+      tags:
+      - tasks
+  /validateUser:
+    post:
+      consumes:
+      - '*/*'
+      description: validate user with given username and passwod
+      parameters:
+      - description: Item
+        in: body
+        name: Item
+        required: true
+        schema:
+          $ref: '#/definitions/main.userRequirements'
+      produces:
+      - application/json
+      responses: {}
+      summary: validateUser
+      tags:
+      - users
+schemes:
+- http
+swagger: "2.0"
