@@ -21,3 +21,4 @@
 go.work
 API/list.json
 __debug_bin
+.env
